@@ -17,6 +17,7 @@ import org.apache.commons.math3.random.RandomGenerator;
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * TestGraphImpl.java
@@ -2498,6 +2499,16 @@ public class WorldGraph extends VoronoiGraph
 	 */
 	public Set<Edge> findPathGreedy(Corner start, Corner end)
 	{
+		return findPathGreedy(start, end, null);
+	}
+
+	/**
+	 * Greedily finds a path between the 2 given corners using Voronoi edges, skipping any edge for which {@code avoidEdge} returns true. Edges leading directly to {@code end} are always
+	 * traversable even if the predicate would exclude them, so the destination is reachable whenever it is adjacent to any already-explored corner. If no path exists under these constraints,
+	 * returns an empty set. Pass {@code null} for {@code avoidEdge} to allow all edges (equivalent to {@link #findPathGreedy(Corner, Corner)}).
+	 */
+	public Set<Edge> findPathGreedy(Corner start, Corner end, Predicate<Edge> avoidEdge)
+	{
 		if (start.equals(end))
 		{
 			return new HashSet<>();
@@ -2523,7 +2534,7 @@ public class WorldGraph extends VoronoiGraph
 			}
 		});
 
-		expandFrontier(startNode, frontier, explored);
+		expandFrontier(startNode, frontier, explored, end, avoidEdge);
 
 		CornerSearchNode endNode = null;
 		while (!frontier.isEmpty())
@@ -2538,24 +2549,34 @@ public class WorldGraph extends VoronoiGraph
 				break;
 			}
 
-			expandFrontier(closest, frontier, explored);
+			expandFrontier(closest, frontier, explored, end, avoidEdge);
 		}
 
 		return createPathFromBackPointers(endNode);
 	}
 
 	/**
-	 * Expands the frontier using Voronoi edges
+	 * Expands the frontier using Voronoi edges. When {@code avoidEdge} is non-null, an edge is skipped unless the neighbor corner equals {@code destination}, ensuring the destination is always
+	 * reachable even when it is only accessible via an otherwise-avoided edge.
 	 */
-	private void expandFrontier(CornerSearchNode node, Set<CornerSearchNode> frontier, Set<CornerSearchNode> explored)
+	private void expandFrontier(CornerSearchNode node, Set<CornerSearchNode> frontier, Set<CornerSearchNode> explored, Corner destination, Predicate<Edge> avoidEdge)
 	{
 		for (Corner c : node.corner.adjacent)
 		{
 			CornerSearchNode otherNode = new CornerSearchNode(c, node);
-			if (!explored.contains(otherNode) && !frontier.contains(otherNode))
+			if (explored.contains(otherNode) || frontier.contains(otherNode))
 			{
-				frontier.add(otherNode);
+				continue;
 			}
+			if (avoidEdge != null && !c.equals(destination))
+			{
+				Edge connectingEdge = findConnectingEdge(node.corner, c);
+				if (connectingEdge != null && avoidEdge.test(connectingEdge))
+				{
+					continue;
+				}
+			}
+			frontier.add(otherNode);
 		}
 	}
 

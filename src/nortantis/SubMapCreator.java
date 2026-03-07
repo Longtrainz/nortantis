@@ -19,6 +19,7 @@ import nortantis.swing.MapEdits;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Predicate;
 
 /**
  * Creates a new MapSettings for a zoomed-in sub-map of an existing map. The sub-map inherits the original map's land/water shape, region colors, text, icons, and roads within the selected area.
@@ -715,7 +716,8 @@ public class SubMapCreator
 	 * fingers introduced by findPathGreedy are removed without accidentally pruning legitimate subsidiary rivers that share corners with adjacent segments.
 	 * <p>
 	 * For the terminal source edge whose endpoint is adjacent to water in the source map (lake or ocean mouth), the new-graph corner is chosen as the closest water-adjacent corner near the
-	 * mapped position, so that the river reliably terminates at a lake or ocean in the sub-map.
+	 * mapped position, so that the river reliably terminates at a lake or ocean in the sub-map. The same treatment is applied symmetrically to the starting edge when its source endpoint is
+	 * adjacent to water (e.g. a river originating from a lake).
 	 * </p>
 	 */
 	private static void transferPolylineToSubMap(List<Corner> polylineCorners, List<Edge> polylineEdges, Map<Integer, Integer> riverLevels, double riverLevelScale, Rectangle selectionBoundsRI,
@@ -725,6 +727,9 @@ public class SubMapCreator
 		// fingers introduced by findPathGreedy within one segment are removed before the segments are
 		// combined. This prevents per-segment fingers from masking legitimate branches of adjacent
 		// segments when the final overall prune runs.
+		// Avoid routing river paths along coastlines, lakeshores, or through water bodies.
+		Predicate<Edge> avoidCoastAndOcean = e -> (e.d0 != null && e.d0.isWater) || (e.d1 != null && e.d1.isWater);
+
 		Map<Integer, Integer> polylineEdgeLevels = new HashMap<>();
 		Corner firstCorner = null;
 		Corner lastCorner = null;
@@ -758,7 +763,7 @@ public class SubMapCreator
 					if (c0 != null && c1 != null && !c0.equals(c1))
 					{
 						Map<Integer, Integer> segmentEdgeLevels = new HashMap<>();
-						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels);
+						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
 						pruneFingers(segmentEdgeLevels, c0, c1, newGraph);
 						segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 						if (firstCorner == null)
@@ -793,7 +798,17 @@ public class SubMapCreator
 				effectiveV1 = new Point(v1RIx, v1RIy);
 			}
 
-			Corner c0 = riToNewCorner(effectiveV0, selectionBoundsRI, newGraph);
+			Corner c0;
+			if (i == 0 && v0Inside && isSourceCornerAdjacentToWater(v0, originalEdits))
+			{
+				// Starting edge whose source endpoint is adjacent to water: seek the closest
+				// water-adjacent corner so the river reliably originates from a lake or ocean.
+				c0 = riToNewCornerAdjacentToWater(effectiveV0, selectionBoundsRI, newGraph, newEdits);
+			}
+			else
+			{
+				c0 = riToNewCorner(effectiveV0, selectionBoundsRI, newGraph);
+			}
 			Corner c1;
 			if (stopAfter)
 			{
@@ -816,7 +831,7 @@ public class SubMapCreator
 			{
 				int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(edgeLevel * riverLevelScale));
 				Map<Integer, Integer> segmentEdgeLevels = new HashMap<>();
-				collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels);
+				collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
 				pruneFingers(segmentEdgeLevels, c0, c1, newGraph);
 				segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 				if (firstCorner == null)
@@ -854,9 +869,34 @@ public class SubMapCreator
 				{
 					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
 					Map<Integer, Integer> extensionEdges = new HashMap<>();
-					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges);
+					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 					lastCorner = nearbyWater;
+				}
+			}
+		}
+
+		// Symmetrically, if the source polyline's starting corner is adjacent to water but the
+		// first new-graph corner is not, extend backward by up to 2 hops to reach water.
+		// Only applies when the starting corner was inside the selection (v0Inside on i==0);
+		// if the river entered from outside, the water is outside the sub-map.
+		if (firstCorner != null && !polylineEdgeLevels.isEmpty())
+		{
+			Corner sourceStart = polylineCorners.get(0);
+			double sourceStartRIx = sourceStart.loc.x / originalResolution;
+			double sourceStartRIy = sourceStart.loc.y / originalResolution;
+			if (selectionBoundsRI.contains(sourceStartRIx, sourceStartRIy)
+					&& isSourceCornerAdjacentToWater(sourceStart, originalEdits)
+					&& !isNewCornerAdjacentToWater(firstCorner, newEdits))
+			{
+				Corner nearbyWater = findNearbyWaterCorner(firstCorner, newEdits, 2);
+				if (nearbyWater != null)
+				{
+					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
+					Map<Integer, Integer> extensionEdges = new HashMap<>();
+					collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
+					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
+					firstCorner = nearbyWater;
 				}
 			}
 		}
@@ -868,11 +908,12 @@ public class SubMapCreator
 	}
 
 	/**
-	 * Runs findPathGreedy between c0 and c1, merging all result edges into edgeLevels (keeping the max level if an edge is already present).
+	 * Runs findPathGreedy between c0 and c1, merging all result edges into edgeLevels (keeping the max level if an edge is already present). {@code avoidEdge} is forwarded to
+	 * {@link WorldGraph#findPathGreedy(Corner, Corner, Predicate)} to exclude unwanted edges during the search; pass {@code null} to allow all edges.
 	 */
-	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels)
+	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels, Predicate<Edge> avoidEdge)
 	{
-		Set<Edge> pathEdges = newGraph.findPathGreedy(c0, c1);
+		Set<Edge> pathEdges = newGraph.findPathGreedy(c0, c1, avoidEdge);
 		for (Edge e : pathEdges)
 		{
 			edgeLevels.merge(e.index, scaledLevel, Math::max);
@@ -930,7 +971,8 @@ public class SubMapCreator
 		{
 			return;
 		}
-		Set<Edge> pathEdges = newGraph.findPathGreedy(newCorner0, newCorner1);
+		Predicate<Edge> avoidCoastAndOcean = e -> (e.d0 != null && e.d0.isWater) || (e.d1 != null && e.d1.isWater);
+		Set<Edge> pathEdges = newGraph.findPathGreedy(newCorner0, newCorner1, avoidCoastAndOcean);
 		for (Edge pathEdge : pathEdges)
 		{
 			newEdits.edgeEdits.put(pathEdge.index, new EdgeEdit(pathEdge.index, scaledLevel));
