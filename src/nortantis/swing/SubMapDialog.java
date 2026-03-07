@@ -59,6 +59,7 @@ public class SubMapDialog
 	private MapUpdater previewUpdater;
 	private MapEditingPanel previewPanel;
 	private JPanel previewContainer;
+	private JScrollPane previewScroll;
 	private volatile MapSettings lastSubMapSettings;
 	private SliderWithDisplayedValue detailSliderWithValue;
 	private JButton createButton;
@@ -408,7 +409,7 @@ public class SubMapDialog
 		double selAreaForDefault = selBoundsRI.width * selBoundsRI.height;
 		oneXWorldSize = origSettings.worldSize * selAreaForDefault / origMapAreaForDefault;
 		final int minPolygonsInSubMap = 1000;
-		clampedOneXWorldSize = (int) Math.round(Math.clamp(oneXWorldSize, oneXWorldSize, SettingsGenerator.maxWorldSize));
+		clampedOneXWorldSize = (int) Math.round(Math.clamp(oneXWorldSize, minPolygonsInSubMap, SettingsGenerator.maxWorldSize));
 
 		// Advice label explaining key sub-map limitations.
 		JLabel adviceLabel = new JLabel("<html>" + "Sub-map land shapes are approximate: each sub-map uses a new random polygon grid, " + "so coastlines will differ slightly from the original. "
@@ -417,7 +418,7 @@ public class SubMapDialog
 
 		// Number of polygons: radio buttons to choose between matching source detail or a custom level.
 		JRadioButton matchSourceRadio = new JRadioButton(String.format("Match source detail (\u2248%d polygons)", clampedOneXWorldSize));
-		customRadio = new JRadioButton("Custom:");
+		customRadio = new JRadioButton("Custom");
 		ButtonGroup detailModeGroup = new ButtonGroup();
 		detailModeGroup.add(matchSourceRadio);
 		detailModeGroup.add(customRadio);
@@ -446,31 +447,48 @@ public class SubMapDialog
 			triggerPreviewRedraw();
 		}, null);
 		detailSlider = detailSliderWithValue.slider;
-		sliderRowHider = controlOrganizer.addComponentsHorizontal(Arrays.asList(detailSlider, detailSliderWithValue.valueDisplay));
+		String polygonsTooltip = "<html>The number of Voronoi polygons in the sub-map, which controls its level of detail.<br>"
+				+ "The multiplier shows how many times more polygons the sub-map has relative<br>"
+				+ "to the equivalent area of the source map. Values below 1\u00d7 mean less detail.<br>"
+				+ "Values above 1\u00d7 mean more detail. The number of polygons must be between " + minPolygonsInSubMap + "<br>and " + SettingsGenerator.maxWorldSize + ".</html>";
+		sliderRowHider = detailSliderWithValue.addToOrganizer(controlOrganizer, "", polygonsTooltip);
 		sliderRowHider.setVisible(false);
 
-		// Warning shown when Custom mode is selected.
+		// Warning shown when Custom mode is selected (indented to match slider).
 		JLabel customWarningLabel = new JLabel(
 				"<html>" + "At custom detail levels, icons are redistributed across the new polygon grid. " + "At higher than source detail, icons appear smaller and may drift away from "
 						+ "coastlines and mountain ranges. At lower detail, they appear larger and sparser." + "</html>");
 		customWarningLabel.setForeground(new java.awt.Color(160, 90, 0));
-		customWarningRowHider = controlOrganizer.addLeftAlignedComponent(customWarningLabel, 2, 8, false);
+		JPanel customWarningWrapper = new JPanel(new BorderLayout());
+		customWarningWrapper.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0));
+		customWarningWrapper.add(customWarningLabel);
+		customWarningRowHider = controlOrganizer.addLeftAlignedComponent(customWarningWrapper, 2, 8, false);
 		customWarningRowHider.setVisible(false);
 
 		// Wire radio button listeners.
 		matchSourceRadio.addActionListener(e ->
 		{
+			if (previewUpdater != null)
+			{
+				previewUpdater.cancel();
+			}
+			previewPanel.setImage(null);
 			sliderRowHider.setVisible(false);
 			customWarningRowHider.setVisible(false);
-			step2Dialog.revalidate();
+			step2Dialog.validate();
 			triggerPreviewRedraw();
 		});
 		customRadio.addActionListener(e ->
 		{
+			if (previewUpdater != null)
+			{
+				previewUpdater.cancel();
+			}
+			previewPanel.setImage(null);
 			sliderRowHider.setVisible(true);
 			customWarningRowHider.setVisible(true);
-			step2Dialog.revalidate();
-				triggerPreviewRedraw();
+			step2Dialog.validate();
+			triggerPreviewRedraw();
 		});
 
 		// Random seed.
@@ -533,7 +551,7 @@ public class SubMapDialog
 		previewContainer = new JPanel(new GridBagLayout());
 		previewContainer.add(previewPanel, new GridBagConstraints());
 
-		JScrollPane previewScroll = new JScrollPane(previewContainer);
+		previewScroll = new JScrollPane(previewContainer);
 		previewWrapper.add(previewScroll, BorderLayout.CENTER);
 
 		mainPanel.add(previewWrapper, BorderLayout.CENTER);
@@ -760,12 +778,21 @@ public class SubMapDialog
 
 	private nortantis.geom.Dimension getPreviewContainerSize()
 	{
-		if (previewContainer == null || previewContainer.getWidth() <= 0 || previewContainer.getHeight() <= 0)
+		// When the image is cleared (null), previewContainer collapses to 0×0 inside the JScrollPane.
+		// Fall back to the viewport size so triggerPreviewRedraw can still start a draw at the correct dimensions.
+		int width = previewContainer != null ? previewContainer.getWidth() : 0;
+		int height = previewContainer != null ? previewContainer.getHeight() : 0;
+		if ((width <= 0 || height <= 0) && previewScroll != null)
+		{
+			width = previewScroll.getViewport().getWidth();
+			height = previewScroll.getViewport().getHeight();
+		}
+		if (width <= 0 || height <= 0)
 		{
 			return null;
 		}
 		double scale = previewPanel != null ? previewPanel.osScale : 1.0;
-		return new nortantis.geom.Dimension(previewContainer.getWidth() * scale, previewContainer.getHeight() * scale);
+		return new nortantis.geom.Dimension(width * scale, height * scale);
 	}
 
 	private int getSubmapWorldSize()
