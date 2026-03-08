@@ -410,6 +410,7 @@ public class SubMapDialog
 		oneXWorldSize = origSettings.worldSize * selAreaForDefault / origMapAreaForDefault;
 		final int minPolygonsInSubMap = 1000;
 		clampedOneXWorldSize = (int) Math.round(Math.clamp(oneXWorldSize, minPolygonsInSubMap, SettingsGenerator.maxWorldSize));
+		boolean matchDetailPossible = oneXWorldSize >= minPolygonsInSubMap;
 
 		// Advice label explaining key sub-map limitations.
 		JLabel adviceLabel = new JLabel("<html>" + "Sub-map land shapes are approximate: each sub-map uses a new random polygon grid, " + "so coastlines will differ slightly from the original. "
@@ -418,16 +419,34 @@ public class SubMapDialog
 
 		// Number of polygons: radio buttons to choose between matching source detail or a custom level.
 		JRadioButton matchSourceRadio = new JRadioButton(String.format("Match source detail (\u2248%d polygons)", clampedOneXWorldSize));
-		customRadio = new JRadioButton("Custom");
+		customRadio = new JRadioButton("Choose");
 		ButtonGroup detailModeGroup = new ButtonGroup();
 		detailModeGroup.add(matchSourceRadio);
 		detailModeGroup.add(customRadio);
-		// Default: match source detail.
-		matchSourceRadio.setSelected(true);
+		// Default: match source detail, unless the selected area is too small to reach the minimum polygon count.
+		if (matchDetailPossible)
+		{
+			matchSourceRadio.setSelected(true);
+		}
+		else
+		{
+			matchSourceRadio.setEnabled(false);
+			customRadio.setSelected(true);
+		}
 
 		controlOrganizer.addLabelAndComponentsHorizontalWithTopInset("Number of polygons:", "", Arrays.asList(matchSourceRadio, customRadio), topInset);
 
-		// Slider row (shown only in Custom mode).
+		// Explanation shown when the selected area is too small to match the source detail level.
+		if (!matchDetailPossible)
+		{
+			JLabel matchDetailDisabledLabel = new JLabel(
+					"<html>\"Match source detail\" is unavailable because the selected area is too small " + "to generate the minimum of " + minPolygonsInSubMap + " polygons at source detail. "
+							+ "Use Choose to set the polygon count manually.</html>");
+			matchDetailDisabledLabel.setForeground(new java.awt.Color(160, 90, 0));
+			controlOrganizer.addLeftAlignedComponent(matchDetailDisabledLabel, 0, 4, false);
+		}
+
+		// Slider row (shown only in Choose mode).
 		JSlider rawSlider = new JSlider(minPolygonsInSubMap, SettingsGenerator.maxWorldSize, clampedOneXWorldSize);
 		rawSlider.setMajorTickSpacing(8000);
 		rawSlider.setMinorTickSpacing(1000);
@@ -447,23 +466,22 @@ public class SubMapDialog
 			triggerPreviewRedraw();
 		}, null);
 		detailSlider = detailSliderWithValue.slider;
-		String polygonsTooltip = "<html>The number of Voronoi polygons in the sub-map, which controls its level of detail.<br>"
-				+ "The multiplier shows how many times more polygons the sub-map has relative<br>"
-				+ "to the equivalent area of the source map. Values below 1\u00d7 mean less detail.<br>"
-				+ "Values above 1\u00d7 mean more detail. The number of polygons must be between " + minPolygonsInSubMap + "<br>and " + SettingsGenerator.maxWorldSize + ".</html>";
+		String polygonsTooltip =
+				"<html>The number of Voronoi polygons in the sub-map, which controls its level of detail.<br>" + "The multiplier shows how many times more polygons the sub-map has relative<br>"
+						+ "to the equivalent area of the source map. Values below 1\u00d7 mean less detail.<br>" + "Values above 1\u00d7 mean more detail. The number of polygons must be between "
+						+ minPolygonsInSubMap + "<br>and " + SettingsGenerator.maxWorldSize + ".</html>";
 		sliderRowHider = detailSliderWithValue.addToOrganizer(controlOrganizer, "", polygonsTooltip);
-		sliderRowHider.setVisible(false);
+		sliderRowHider.setVisible(!matchDetailPossible);
 
-		// Warning shown when Custom mode is selected (indented to match slider).
-		JLabel customWarningLabel = new JLabel(
-				"<html>" + "At custom detail levels, icons are redistributed across the new polygon grid. " + "At higher than source detail, icons appear smaller and may drift away from "
-						+ "coastlines and mountain ranges. At lower detail, they appear larger and sparser." + "</html>");
+		// Warning shown when Choose mode is selected (indented to match slider).
+		JLabel customWarningLabel = new JLabel("<html>" + "When manually choosing the detail level, icons are redistributed across the new polygon grid. "
+				+ "At higher than source detail, icons appear smaller and may drift away from " + "coastlines and mountain ranges. At lower detail, they appear larger and sparser." + "</html>");
 		customWarningLabel.setForeground(new java.awt.Color(160, 90, 0));
 		JPanel customWarningWrapper = new JPanel(new BorderLayout());
 		customWarningWrapper.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0));
 		customWarningWrapper.add(customWarningLabel);
 		customWarningRowHider = controlOrganizer.addLeftAlignedComponent(customWarningWrapper, 2, 8, false);
-		customWarningRowHider.setVisible(false);
+		customWarningRowHider.setVisible(!matchDetailPossible);
 
 		// Wire radio button listeners.
 		matchSourceRadio.addActionListener(e ->
@@ -501,7 +519,7 @@ public class SubMapDialog
 				try
 				{
 					subMapSeed = Long.parseLong(seedTextField.getText());
-						triggerPreviewRedraw();
+					triggerPreviewRedraw();
 				}
 				catch (NumberFormatException ex)
 				{
@@ -625,7 +643,7 @@ public class SubMapDialog
 				{
 					return;
 				}
-					triggerPreviewRedraw();
+				triggerPreviewRedraw();
 			}
 		});
 
@@ -636,7 +654,7 @@ public class SubMapDialog
 			{
 				step2DialogOpened = true;
 				// Trigger the first draw here, after the dialog is visible and its container is sized.
-					triggerPreviewRedraw();
+				triggerPreviewRedraw();
 			}
 
 			@Override
