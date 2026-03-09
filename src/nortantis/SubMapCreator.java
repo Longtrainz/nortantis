@@ -119,8 +119,12 @@ public class SubMapCreator
 		Map<Integer, List<Integer>> originalRegionToNewCenters = buildCenterEdits(newGraph, originalGraph, originalEdits, selectionBoundsRI, originalResolution, newEdits);
 
 		// Propagate coast/corner flags now that isWater/isLake are set on all centers.
-		newGraph.updateCoastAndCornerFlags();
+		// markLakes must run first so that updateCoastAndCornerFlags sees the correct isLake values
+		// when computing numOcean (ocean = isWater && !isLake); otherwise lake-shore corners get
+		// isCoast instead of isWater, which is semantically wrong even though the avoidCorner
+		// predicate catches both.
 		newGraph.markLakes();
+		newGraph.updateCoastAndCornerFlags();
 
 		// Build remaining MapEdits.
 
@@ -728,7 +732,10 @@ public class SubMapCreator
 		// combined. This prevents per-segment fingers from masking legitimate branches of adjacent
 		// segments when the final overall prune runs.
 		// Avoid routing river paths along coastlines, lakeshores, or through water bodies.
-		Predicate<Edge> avoidCoastAndOcean = e -> (e.d0 != null && e.d0.isWater) || (e.d1 != null && e.d1.isWater);
+		// Blocking coast, ocean, and water corners prevents the path from traversing coast edges
+		// (whose endpoints are always coast corners) and from following the shoreline via land edges
+		// between adjacent coast corners.
+		Predicate<Corner> avoidCoastAndOcean = c -> c.isCoast || c.isOcean || c.isWater;
 
 		Map<Integer, Integer> polylineEdgeLevels = new HashMap<>();
 		Corner firstCorner = null;
@@ -763,8 +770,10 @@ public class SubMapCreator
 					if (c0 != null && c1 != null && !c0.equals(c1))
 					{
 						Map<Integer, Integer> segmentEdgeLevels = new HashMap<>();
+						// TODO Pass in a predicate for avoidEdge that makes the search avoid edges it has already followed. I want to see if that can make the pruneFingers method unnecessary. Although I'm not sure if this needs to be done here or in transferRiverEdgeToSubMap.
 						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
 						pruneFingers(segmentEdgeLevels, c0, c1, newGraph);
+						// TODO What does this line do? segmentEdgeLevels has indexes of edges from newGraph, and polylineEdgeLevels has edge indexes from the original graph, right? So then why are edge indexes from newGraph being stored into polylineEdgeLevel?
 						segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 						if (firstCorner == null)
 							firstCorner = c0;
@@ -907,13 +916,18 @@ public class SubMapCreator
 		}
 	}
 
-	/**
-	 * Runs findPathGreedy between c0 and c1, merging all result edges into edgeLevels (keeping the max level if an edge is already present). {@code avoidEdge} is forwarded to
-	 * {@link WorldGraph#findPathGreedy(Corner, Corner, Predicate)} to exclude unwanted edges during the search; pass {@code null} to allow all edges.
-	 */
-	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels, Predicate<Edge> avoidEdge)
+	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels, Predicate<Corner> avoidCorner)
 	{
-		Set<Edge> pathEdges = newGraph.findPathGreedy(c0, c1, avoidEdge);
+		collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, edgeLevels, null);
+	}
+
+	/**
+	 * Runs findPathGreedy between c0 and c1, merging all result edges into edgeLevels (keeping the max level if an edge is already present). {@code avoidCorner} is forwarded to
+	 * {@link WorldGraph#findPathGreedy(Corner, Corner, Predicate, Predicate)} to exclude unwanted corners during the search; pass {@code null} to allow all corners.
+	 */
+	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels, Predicate<Corner> avoidCorner, Predicate<Edge> avoidEdge)
+	{
+		Set<Edge> pathEdges = newGraph.findPathGreedy(c0, c1, avoidCorner, avoidEdge);
 		for (Edge e : pathEdges)
 		{
 			edgeLevels.merge(e.index, scaledLevel, Math::max);
@@ -971,8 +985,9 @@ public class SubMapCreator
 		{
 			return;
 		}
-		Predicate<Edge> avoidCoastAndOcean = e -> (e.d0 != null && e.d0.isWater) || (e.d1 != null && e.d1.isWater);
-		Set<Edge> pathEdges = newGraph.findPathGreedy(newCorner0, newCorner1, avoidCoastAndOcean);
+		Predicate<Corner> avoidCoastAndOcean = c -> c.isCoast || c.isOcean || c.isWater;
+		// TODO Is this where I need to add an avoidEdge method to avoid rivers going back on themselves?
+		Set<Edge> pathEdges = newGraph.findPathGreedy(newCorner0, newCorner1, avoidCoastAndOcean, null);
 		for (Edge pathEdge : pathEdges)
 		{
 			newEdits.edgeEdits.put(pathEdge.index, new EdgeEdit(pathEdge.index, scaledLevel));
