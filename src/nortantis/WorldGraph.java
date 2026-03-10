@@ -3414,4 +3414,116 @@ public class WorldGraph extends VoronoiGraph
 			c.isWater = (numLand != c.touches.size()) && !c.isCoast;
 		}
 	}
+
+	/**
+	 * Finds all rivers in the graph and returns them as ordered lists of edges. Each tributary that joins a main river is returned as a separate {@link River} object.
+	 */
+	public List<River> findRivers()
+	{
+		List<River> rivers = new ArrayList<>();
+		Set<Corner> riversAlreadyFound = new HashSet<>();
+		for (Corner corner : corners)
+		{
+			if (corner.river > River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN && !riversAlreadyFound.contains(corner))
+			{
+				River river = findRiver(riversAlreadyFound, corner);
+				riversAlreadyFound.addAll(river.getCorners());
+				rivers.add(river);
+			}
+		}
+		return rivers;
+	}
+
+	private River findRiver(Set<Corner> riversAlreadyFound, Corner start)
+	{
+		List<Edge> options = new ArrayList<>();
+		for (Edge e : start.protrudes)
+		{
+			if (e.river > River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN && e.v0 != null && e.v1 != null)
+			{
+				options.add(e);
+			}
+		}
+		sortByRiverEdgeWidth(options);
+		if (options.size() == 0)
+		{
+			assert false;
+			return new River();
+		}
+		else if (options.size() == 1)
+		{
+			Corner downStream = options.get(0).getOtherCorner(start);
+			return followRiver(riversAlreadyFound, start, downStream);
+		}
+		else
+		{
+			River river1 = followRiver(riversAlreadyFound, start, options.get(0).getOtherCorner(start));
+			River river2 = followRiver(riversAlreadyFound, start, options.get(1).getOtherCorner(start));
+			river2.reverse();
+			river2.addAll(river1);
+			return river2;
+		}
+	}
+
+	/**
+	 * Searches along edges to find corners connected by a river. If the river forks, only the widest direction is followed; narrower tributaries are picked up as separate rivers by
+	 * {@link #findRivers()}.
+	 *
+	 * @param last
+	 *            The search will not go in the direction of this corner.
+	 * @param head
+	 *            The search will go in the direction of this corner.
+	 */
+	private River followRiver(Set<Corner> riversAlreadyFound, Corner last, Corner head)
+	{
+		assert last != null;
+		assert head != null;
+		assert !head.equals(last);
+
+		Edge lastToHead = edgeWithCorners(last, head);
+		River result = new River();
+		result.add(lastToHead);
+
+		List<Edge> riverEdges = new ArrayList<>();
+		for (Edge e : head.protrudes)
+		{
+			if (e.isRiver() && e != lastToHead)
+			{
+				riverEdges.add(e);
+			}
+		}
+
+		if (riverEdges.size() == 0)
+		{
+			return result;
+		}
+		else
+		{
+			sortByRiverEdgeWidth(riverEdges);
+			Edge widest = riverEdges.get(0);
+			Corner nextHead = widest.v0 == head ? widest.v1 : widest.v0;
+
+			if (nextHead == null)
+			{
+				return result;
+			}
+
+			if (riversAlreadyFound.contains(nextHead))
+			{
+				result.add(widest);
+				return result;
+			}
+
+			result.addAll(followRiver(riversAlreadyFound, head, nextHead));
+			return result;
+		}
+	}
+
+	private void sortByRiverEdgeWidth(List<Edge> edges)
+	{
+		if (edges.size() > 1)
+		{
+			Collections.sort(edges, (e0, e1) -> -Integer.compare(e0.river, e1.river));
+		}
+	}
 }

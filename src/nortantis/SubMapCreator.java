@@ -13,7 +13,6 @@ import nortantis.geom.Rectangle;
 import nortantis.graph.voronoi.Center;
 import nortantis.graph.voronoi.Corner;
 import nortantis.graph.voronoi.Edge;
-import nortantis.graph.voronoi.VoronoiGraph;
 import nortantis.platform.Font;
 import nortantis.swing.MapEdits;
 
@@ -571,53 +570,30 @@ public class SubMapCreator
 	 */
 	private static void transferRivers(WorldGraph originalGraph, MapEdits originalEdits, WorldGraph newGraph, Rectangle selectionBoundsRI, MapEdits newEdits, double originalResolution)
 	{
-		// Collect visible river edges from EdgeEdits (the authoritative source for drawn rivers).
-		// Uses the RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN threshold to exclude invisible rivers
-		// that old versions of MapSettings may have stored with level > 0.
-		Map<Integer, Integer> riverLevels = new HashMap<>();
-		for (EdgeEdit ee : originalEdits.edgeEdits.values())
-		{
-			if (ee.riverLevel > River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN)
-			{
-				riverLevels.put(ee.index, ee.riverLevel);
-			}
-		}
-		if (riverLevels.isEmpty())
+		List<River> rivers = originalGraph.findRivers();
+		if (rivers.isEmpty())
 		{
 			return;
 		}
 
-		// Build corner → adjacent river-edges map for chain traversal.
-		Map<Integer, List<Edge>> cornerToRiverEdges = new HashMap<>();
-		Map<Integer, Corner> cornerByIndex = new HashMap<>();
-		for (Map.Entry<Integer, Integer> entry : riverLevels.entrySet())
-		{
-			Edge edge = originalGraph.edges.get(entry.getKey());
-			if (edge == null || edge.v0 == null || edge.v1 == null)
-			{
-				continue;
-			}
-			cornerToRiverEdges.computeIfAbsent(edge.v0.index, k -> new ArrayList<>()).add(edge);
-			cornerToRiverEdges.computeIfAbsent(edge.v1.index, k -> new ArrayList<>()).add(edge);
-			cornerByIndex.put(edge.v0.index, edge.v0);
-			cornerByIndex.put(edge.v1.index, edge.v1);
-		}
+		double riverLevelScale = computeRiverLevelScale(originalGraph, originalResolution, selectionBoundsRI, newGraph);
 
-		// Segment endpoints: corners with river degree ≠ 2 (heads, mouths, confluences).
-		Set<Integer> endpointIndices = new HashSet<>();
-		for (Map.Entry<Integer, List<Edge>> entry : cornerToRiverEdges.entrySet())
+		for (River river : rivers)
 		{
-			if (entry.getValue().size() != 2)
-			{
-				endpointIndices.add(entry.getKey());
-			}
+			transferPolylineToSubMap(river.getOrderedCorners(), river.getEdges(), riverLevelScale, selectionBoundsRI, newGraph, originalEdits, newEdits, originalResolution);
 		}
+	}
 
-		// Compute zoom-based river level scale: rivers should appear proportionally wider when zoomed in.
-		// Width ∝ sqrt(riverLevel), so scaling width by zoomFactor requires scaling level by zoomFactor².
-		// When the sub-map has higher polygon density than a 1× equivalent (detailRatio > 1), rivers
-		// are widened less, matching the same attenuation used for font scaling in transferText.
-		// The floor of 1.0 ensures rivers are never narrower in the sub-map than in the source.
+	/**
+	 * Computes a scale factor for river levels when transferring from the original graph to the sub-map.
+	 * <p>
+	 * Rivers should appear proportionally wider when zoomed in. Width ∝ sqrt(riverLevel), so scaling width by zoomFactor requires scaling level by zoomFactor². When the sub-map has higher polygon
+	 * density than a 1× equivalent (detailRatio > 1), rivers are widened less, matching the same attenuation used for font scaling in transferText. The floor of 1.0 ensures rivers are never
+	 * narrower in the sub-map than in the source.
+	 * </p>
+	 */
+	private static double computeRiverLevelScale(WorldGraph originalGraph, double originalResolution, Rectangle selectionBoundsRI, WorldGraph newGraph)
+	{
 		double originalRIWidth = originalGraph.getWidth() / originalResolution;
 		double originalRIHeight = originalGraph.getHeight() / originalResolution;
 		double maxOriginalDim = Math.max(originalRIWidth, originalRIHeight);
@@ -627,91 +603,7 @@ public class SubMapCreator
 		double selectionArea = selectionBoundsRI.width * selectionBoundsRI.height;
 		double oneXWorldSize = originalMapArea > 0 ? originalGraph.centers.size() * selectionArea / originalMapArea : 1.0;
 		double detailRatio = oneXWorldSize > 0 ? newGraph.centers.size() / oneXWorldSize : 1.0;
-		double riverLevelScale = Math.max(1.0, zoomFactor * zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.5)));
-
-		// Trace ordered polylines from each endpoint corner and transfer each edge individually.
-		Set<Integer> processedEdgeIndices = new HashSet<>();
-		for (int endpointIdx : endpointIndices)
-		{
-			Corner startCorner = cornerByIndex.get(endpointIdx);
-			List<Edge> startEdges = cornerToRiverEdges.get(endpointIdx);
-			if (startCorner == null || startEdges == null)
-			{
-				continue;
-			}
-
-			for (Edge startEdge : startEdges)
-			{
-				if (processedEdgeIndices.contains(startEdge.index))
-				{
-					continue;
-				}
-
-				// Walk the degree-2 chain, building ordered corner and edge lists.
-				List<Corner> polylineCorners = new ArrayList<>();
-				List<Edge> polylineEdges = new ArrayList<>();
-				Corner currentCorner = startCorner;
-				Edge currentEdge = startEdge;
-				Set<Integer> visitedCorners = new HashSet<>();
-				visitedCorners.add(currentCorner.index);
-				polylineCorners.add(currentCorner);
-
-				while (true)
-				{
-					processedEdgeIndices.add(currentEdge.index);
-					Corner nextCorner = currentEdge.v0.index == currentCorner.index ? currentEdge.v1 : currentEdge.v0;
-					polylineCorners.add(nextCorner);
-					polylineEdges.add(currentEdge);
-
-					if (endpointIndices.contains(nextCorner.index) || visitedCorners.contains(nextCorner.index))
-					{
-						break;
-					}
-					visitedCorners.add(nextCorner.index);
-
-					List<Edge> nextEdges = cornerToRiverEdges.get(nextCorner.index);
-					if (nextEdges == null)
-					{
-						break;
-					}
-					Edge nextEdge = null;
-					for (Edge e : nextEdges)
-					{
-						if (e.index != currentEdge.index)
-						{
-							nextEdge = e;
-							break;
-						}
-					}
-					if (nextEdge == null)
-					{
-						break;
-					}
-					currentEdge = nextEdge;
-					currentCorner = nextCorner;
-				}
-
-				transferPolylineToSubMap(polylineCorners, polylineEdges, riverLevels, riverLevelScale, selectionBoundsRI, newGraph, originalEdits, newEdits, originalResolution);
-			}
-		}
-
-		// Fallback for isolated loops (all corners degree 2, no endpoints — extremely rare).
-		for (Map.Entry<Integer, Integer> entry : riverLevels.entrySet())
-		{
-			if (processedEdgeIndices.contains(entry.getKey()))
-			{
-				continue;
-			}
-			Edge edge = originalGraph.edges.get(entry.getKey());
-			if (edge == null || edge.v0 == null || edge.v1 == null)
-			{
-				continue;
-			}
-			int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(entry.getValue() * riverLevelScale));
-			transferRiverEdgeToSubMap(new Point(edge.v0.loc.x / originalResolution, edge.v0.loc.y / originalResolution),
-					new Point(edge.v1.loc.x / originalResolution, edge.v1.loc.y / originalResolution), scaledLevel, selectionBoundsRI, newGraph, newEdits);
-			processedEdgeIndices.add(entry.getKey());
-		}
+		return Math.max(1.0, zoomFactor * zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.5)));
 	}
 
 	/**
@@ -724,8 +616,8 @@ public class SubMapCreator
 	 * adjacent to water (e.g. a river originating from a lake).
 	 * </p>
 	 */
-	private static void transferPolylineToSubMap(List<Corner> polylineCorners, List<Edge> polylineEdges, Map<Integer, Integer> riverLevels, double riverLevelScale, Rectangle selectionBoundsRI,
-			WorldGraph newGraph, MapEdits originalEdits, MapEdits newEdits, double originalResolution)
+	private static void transferPolylineToSubMap(List<Corner> polylineCorners, List<Edge> polylineEdges, double riverLevelScale, Rectangle selectionBoundsRI, WorldGraph newGraph,
+			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
 	{
 		// Collect all sub-map edges for this polyline, pruning fingers per source-map segment so that
 		// fingers introduced by findPathGreedy within one segment are removed before the segments are
@@ -737,14 +629,15 @@ public class SubMapCreator
 		// between adjacent coast corners.
 		Predicate<Corner> avoidCoastAndOcean = c -> c.isCoast || c.isOcean || c.isWater;
 
-		Map<Integer, Integer> polylineEdgeLevels = new HashMap<>();
+		// New-graph edges → their river level, accumulated across all source segments of this polyline.
+		Map<Edge, Integer> polylineEdgeLevels = new HashMap<>();
 		Corner firstCorner = null;
 		Corner lastCorner = null;
 		boolean lastEdgeWasStopAfter = false;
 
 		for (int i = 0; i < polylineEdges.size(); i++)
 		{
-			int edgeLevel = riverLevels.getOrDefault(polylineEdges.get(i).index, 0);
+			int edgeLevel = polylineEdges.get(i).river;
 			if (edgeLevel <= 0)
 			{
 				continue;
@@ -769,11 +662,11 @@ public class SubMapCreator
 					Corner c1 = riToNewCorner(through.get(1), selectionBoundsRI, newGraph);
 					if (c0 != null && c1 != null && !c0.equals(c1))
 					{
-						Map<Integer, Integer> segmentEdgeLevels = new HashMap<>();
-						// TODO Pass in a predicate for avoidEdge that makes the search avoid edges it has already followed. I want to see if that can make the pruneFingers method unnecessary. Although I'm not sure if this needs to be done here or in transferRiverEdgeToSubMap.
+						// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
+						Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
+						// TODO Pass in a predicate for avoidEdge that makes the search avoid edges it has already followed. I want to see if that can make the pruneFingers method unnecessary.
 						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
-						pruneFingers(segmentEdgeLevels, c0, c1, newGraph);
-						// TODO What does this line do? segmentEdgeLevels has indexes of edges from newGraph, and polylineEdgeLevels has edge indexes from the original graph, right? So then why are edge indexes from newGraph being stored into polylineEdgeLevel?
+						pruneFingers(segmentEdgeLevels, c0, c1);
 						segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 						if (firstCorner == null)
 							firstCorner = c0;
@@ -839,9 +732,10 @@ public class SubMapCreator
 			if (c0 != null && c1 != null && !c0.equals(c1))
 			{
 				int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(edgeLevel * riverLevelScale));
-				Map<Integer, Integer> segmentEdgeLevels = new HashMap<>();
+				// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
+				Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
 				collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
-				pruneFingers(segmentEdgeLevels, c0, c1, newGraph);
+				pruneFingers(segmentEdgeLevels, c0, c1);
 				segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 				if (firstCorner == null)
 					firstCorner = c0;
@@ -860,7 +754,7 @@ public class SubMapCreator
 		// over-prune compared to running only the overall prune without per-segment pruning.
 		if (firstCorner != null && lastCorner != null && !firstCorner.equals(lastCorner))
 		{
-			pruneFingers(polylineEdgeLevels, firstCorner, lastCorner, newGraph);
+			pruneFingers(polylineEdgeLevels, firstCorner, lastCorner);
 		}
 
 		// If the source polyline's terminal corner is adjacent to water but the last new-graph corner
@@ -877,7 +771,8 @@ public class SubMapCreator
 				if (nearbyWater != null)
 				{
 					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
-					Map<Integer, Integer> extensionEdges = new HashMap<>();
+					// New-graph edges → river level for the short extension path to water.
+					Map<Edge, Integer> extensionEdges = new HashMap<>();
 					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 					lastCorner = nearbyWater;
@@ -902,7 +797,8 @@ public class SubMapCreator
 				if (nearbyWater != null)
 				{
 					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
-					Map<Integer, Integer> extensionEdges = new HashMap<>();
+					// New-graph edges → river level for the short extension path to water.
+					Map<Edge, Integer> extensionEdges = new HashMap<>();
 					collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 					firstCorner = nearbyWater;
@@ -910,57 +806,56 @@ public class SubMapCreator
 			}
 		}
 
-		for (Map.Entry<Integer, Integer> entry : polylineEdgeLevels.entrySet())
+		for (Map.Entry<Edge, Integer> entry : polylineEdgeLevels.entrySet())
 		{
-			newEdits.edgeEdits.put(entry.getKey(), new EdgeEdit(entry.getKey(), entry.getValue()));
+			newEdits.edgeEdits.put(entry.getKey().index, new EdgeEdit(entry.getKey().index, entry.getValue()));
 		}
 	}
 
-	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels, Predicate<Corner> avoidCorner)
+	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Edge, Integer> edgeLevels, Predicate<Corner> avoidCorner)
 	{
-		collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, edgeLevels, null);
+		collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, edgeLevels, avoidCorner, null);
 	}
 
 	/**
 	 * Runs findPathGreedy between c0 and c1, merging all result edges into edgeLevels (keeping the max level if an edge is already present). {@code avoidCorner} is forwarded to
 	 * {@link WorldGraph#findPathGreedy(Corner, Corner, Predicate, Predicate)} to exclude unwanted corners during the search; pass {@code null} to allow all corners.
 	 */
-	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Integer, Integer> edgeLevels, Predicate<Corner> avoidCorner, Predicate<Edge> avoidEdge)
+	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Edge, Integer> edgeLevels, Predicate<Corner> avoidCorner, Predicate<Edge> avoidEdge)
 	{
 		Set<Edge> pathEdges = newGraph.findPathGreedy(c0, c1, avoidCorner, avoidEdge);
 		for (Edge e : pathEdges)
 		{
-			edgeLevels.merge(e.index, scaledLevel, Math::max);
+			edgeLevels.merge(e, scaledLevel, Math::max);
 		}
 	}
 
 	/**
 	 * Iteratively removes edges whose one endpoint has degree 1 in edgeLevels and is not startCorner or endCorner. This prunes finger branches without touching valid river endpoints or loops.
 	 */
-	private static void pruneFingers(Map<Integer, Integer> edgeLevels, Corner startCorner, Corner endCorner, WorldGraph newGraph)
+	private static void pruneFingers(Map<Edge, Integer> edgeLevels, Corner startCorner, Corner endCorner)
 	{
 		boolean changed = true;
 		while (changed)
 		{
 			changed = false;
-			Map<Integer, Integer> cornerDegree = new HashMap<>();
-			for (int edgeIdx : edgeLevels.keySet())
+			// New-graph corners → their edge-degree in the current edgeLevels subgraph, for finger detection.
+			Map<Corner, Integer> cornerDegree = new HashMap<>();
+			for (Edge e : edgeLevels.keySet())
 			{
-				Edge e = newGraph.edges.get(edgeIdx);
 				if (e.v0 != null)
-					cornerDegree.merge(e.v0.index, 1, Integer::sum);
+					cornerDegree.merge(e.v0, 1, Integer::sum);
 				if (e.v1 != null)
-					cornerDegree.merge(e.v1.index, 1, Integer::sum);
+					cornerDegree.merge(e.v1, 1, Integer::sum);
 			}
-			for (Map.Entry<Integer, Integer> entry : cornerDegree.entrySet())
+			for (Map.Entry<Corner, Integer> entry : cornerDegree.entrySet())
 			{
-				if (entry.getValue() == 1 && entry.getKey() != startCorner.index && entry.getKey() != endCorner.index)
+				if (entry.getValue() == 1 && !entry.getKey().equals(startCorner) && !entry.getKey().equals(endCorner))
 				{
-					for (Iterator<Integer> it = edgeLevels.keySet().iterator(); it.hasNext();)
+					for (Iterator<Edge> it = edgeLevels.keySet().iterator(); it.hasNext();)
 					{
-						int edgeIdx = it.next();
-						Edge e = newGraph.edges.get(edgeIdx);
-						if ((e.v0 != null && e.v0.index == entry.getKey()) || (e.v1 != null && e.v1.index == entry.getKey()))
+						Edge e = it.next();
+						if ((e.v0 != null && e.v0.equals(entry.getKey())) || (e.v1 != null && e.v1.equals(entry.getKey())))
 						{
 							it.remove();
 							changed = true;
@@ -971,26 +866,6 @@ public class SubMapCreator
 						break;
 				}
 			}
-		}
-	}
-
-	/**
-	 * Maps two RI-space endpoints to sub-map corners via {@link #riToNewCorner} and runs findPathGreedy, assigning the given scaled river level to all resulting edges.
-	 */
-	private static void transferRiverEdgeToSubMap(Point v0RI, Point v1RI, int scaledLevel, Rectangle selectionBoundsRI, WorldGraph newGraph, MapEdits newEdits)
-	{
-		Corner newCorner0 = riToNewCorner(v0RI, selectionBoundsRI, newGraph);
-		Corner newCorner1 = riToNewCorner(v1RI, selectionBoundsRI, newGraph);
-		if (newCorner0 == null || newCorner1 == null || newCorner0.equals(newCorner1))
-		{
-			return;
-		}
-		Predicate<Corner> avoidCoastAndOcean = c -> c.isCoast || c.isOcean || c.isWater;
-		// TODO Is this where I need to add an avoidEdge method to avoid rivers going back on themselves?
-		Set<Edge> pathEdges = newGraph.findPathGreedy(newCorner0, newCorner1, avoidCoastAndOcean, null);
-		for (Edge pathEdge : pathEdges)
-		{
-			newEdits.edgeEdits.put(pathEdge.index, new EdgeEdit(pathEdge.index, scaledLevel));
 		}
 	}
 
@@ -1030,9 +905,10 @@ public class SubMapCreator
 	 */
 	private static Corner findNearbyWaterCorner(Corner from, MapEdits newEdits, int maxHops)
 	{
-		Set<Integer> visited = new HashSet<>();
+		// New-graph corners already examined in this BFS (prevents revisiting).
+		Set<Corner> visited = new HashSet<>();
 		Queue<Corner> queue = new LinkedList<>();
-		visited.add(from.index);
+		visited.add(from);
 		queue.add(from);
 		for (int hop = 0; hop < maxHops && !queue.isEmpty(); hop++)
 		{
@@ -1042,11 +918,11 @@ public class SubMapCreator
 				Corner current = queue.poll();
 				for (Corner neighbor : current.adjacent)
 				{
-					if (visited.contains(neighbor.index))
+					if (visited.contains(neighbor))
 					{
 						continue;
 					}
-					visited.add(neighbor.index);
+					visited.add(neighbor);
 					if (isNewCornerAdjacentToWater(neighbor, newEdits))
 					{
 						return neighbor;
