@@ -3490,10 +3490,18 @@ public class WorldGraph extends VoronoiGraph
 	 */
 	private River followRiver(Set<Corner> riversAlreadyFound, Corner last, Corner head)
 	{
+		Set<Corner> visitedCorners = new HashSet<>();
+		visitedCorners.add(last);
+		return followRiver(riversAlreadyFound, last, head, visitedCorners);
+	}
+
+	private River followRiver(Set<Corner> riversAlreadyFound, Corner last, Corner head, Set<Corner> visitedCorners)
+	{
 		assert last != null;
 		assert head != null;
 		assert !head.equals(last);
 
+		visitedCorners.add(head);
 		Edge lastToHead = edgeWithCorners(last, head);
 		River result = new River();
 		result.add(lastToHead);
@@ -3522,13 +3530,13 @@ public class WorldGraph extends VoronoiGraph
 				return result;
 			}
 
-			if (riversAlreadyFound.contains(nextHead))
+			if (riversAlreadyFound.contains(nextHead) || visitedCorners.contains(nextHead))
 			{
 				result.add(widest);
 				return result;
 			}
 
-			result.addAll(followRiver(riversAlreadyFound, head, nextHead));
+			result.addAll(followRiver(riversAlreadyFound, head, nextHead, visitedCorners));
 			return result;
 		}
 	}
