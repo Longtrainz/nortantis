@@ -608,165 +608,55 @@ public class SubMapCreator
 		return Math.max(1.0, zoomFactor * zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.5)));
 	}
 
+	private record RiverSegment(Corner c0, Corner c1, int level, boolean stopAfter) {}
+
 	/**
-	 * Transfers each edge of an ordered river polyline to the sub-map. Each source-map edge is processed individually: its RI-space corners are clipped to the selection boundary via actual line
-	 * intersection (for accuracy), then mapped to sub-map corners for a findPathGreedy call. Finger pruning is applied per source-map edge (not to the entire combined polyline) so that
-	 * fingers introduced by findPathGreedy are removed without accidentally pruning legitimate subsidiary rivers that share corners with adjacent segments.
-	 * <p>
-	 * For the terminal source edge whose endpoint is adjacent to water in the source map (lake or ocean mouth), the new-graph corner is chosen as the closest water-adjacent corner near the
-	 * mapped position, so that the river reliably terminates at a lake or ocean in the sub-map. The same treatment is applied symmetrically to the starting edge when its source endpoint is
-	 * adjacent to water (e.g. a river originating from a lake).
-	 * </p>
+	 * Transfers each edge of an ordered river polyline to the sub-map. Delegates endpoint computation to
+	 * {@link #computeRiverSegments}, then routes each segment via {@link WorldGraph#findPathGreedy} with
+	 * per-segment finger pruning. A final {@link #simplifyToPath} pass removes cross-segment loops; if the
+	 * polyline has a gap from a failed routing it falls back to a no-op so disconnected segments survive.
 	 */
 	private static void transferPolylineToSubMap(List<Corner> polylineCorners, List<Edge> polylineEdges, double riverLevelScale, Rectangle selectionBoundsRI, WorldGraph newGraph,
 			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
 	{
-		// Collect all sub-map edges for this polyline, pruning fingers per source-map segment so that
-		// fingers introduced by findPathGreedy within one segment are removed before the segments are
-		// combined. This prevents per-segment fingers from masking legitimate branches of adjacent
-		// segments when the final overall prune runs.
 		// Avoid routing river paths along coastlines, lakeshores, or through water bodies.
 		// Blocking coast, ocean, and water corners prevents the path from traversing coast edges
 		// (whose endpoints are always coast corners) and from following the shoreline via land edges
 		// between adjacent coast corners.
 		Predicate<Corner> avoidCoastAndOcean = c -> c.isCoast || c.isOcean || c.isWater;
 
+		List<RiverSegment> segments = computeRiverSegments(polylineCorners, polylineEdges, riverLevelScale, selectionBoundsRI, newGraph, originalEdits, newEdits, originalResolution);
+
 		// New-graph edges → their river level, accumulated across all source segments of this polyline.
-		Map <Edge, Integer> polylineEdgeLevels = new HashMap<>();
+		Map<Edge, Integer> polylineEdgeLevels = new HashMap<>();
 		Corner firstCorner = null;
 		Corner lastCorner = null;
-		boolean lastEdgeWasStopAfter = false;
-
-		for (int i = 0; i < polylineEdges.size(); i++)
+		for (RiverSegment segment : segments)
 		{
-			int edgeLevel = polylineEdges.get(i).river;
-			if (edgeLevel <= 0)
+			// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
+			Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
+			collectGreedyPathEdges(segment.c0(), segment.c1(), segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean);
+			pruneFingers(segmentEdgeLevels, segment.c0(), segment.c1());
+			segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
+			if (!segmentEdgeLevels.isEmpty())
 			{
-				continue;
-			}
-			Corner v0 = polylineCorners.get(i);
-			Corner v1 = polylineCorners.get(i + 1);
-			double v0RIx = v0.loc.x / originalResolution;
-			double v0RIy = v0.loc.y / originalResolution;
-			double v1RIx = v1.loc.x / originalResolution;
-			double v1RIy = v1.loc.y / originalResolution;
-			boolean v0Inside = selectionBoundsRI.contains(v0RIx, v0RIy);
-			boolean v1Inside = selectionBoundsRI.contains(v1RIx, v1RIy);
-
-			if (!v0Inside && !v1Inside)
-			{
-				// Edge entirely outside; handle the case where it passes through the selection.
-				Optional<Tuple2<Point, Point>> through = segmentThroughIntersections(new Point(v0RIx, v0RIy), new Point(v1RIx, v1RIy), selectionBoundsRI);
-				if (through.isPresent())
-				{
-					int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(edgeLevel * riverLevelScale));
-					Corner c0 = riToNewCorner(through.get().getFirst(), selectionBoundsRI, newGraph);
-					Corner c1 = riToNewCorner(through.get().getSecond(), selectionBoundsRI, newGraph);
-					if (c0 != null && c1 != null && !c0.equals(c1))
-					{
-						// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
-						Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
-						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
-						pruneFingers(segmentEdgeLevels, c0, c1);
-						segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-						if (!segmentEdgeLevels.isEmpty())
-						{
-							if (firstCorner == null)
-								firstCorner = c0;
-							lastCorner = c1;
-						}
-					}
-				}
-				continue;
-			}
-
-			Point effectiveV0, effectiveV1;
-			boolean stopAfter = false;
-			if (v0Inside && v1Inside)
-			{
-				effectiveV0 = new Point(v0RIx, v0RIy);
-				effectiveV1 = new Point(v1RIx, v1RIy);
-			}
-			else if (v0Inside)
-			{
-				// River exits the selection: use the line-intersection point so the river ends at the
-				// correct map-edge position rather than snapping to the nearest boundary corner.
-				Point intersection = segmentBoundaryIntersection(new Point(v0RIx, v0RIy), new Point(v1RIx, v1RIy), selectionBoundsRI);
-				effectiveV0 = new Point(v0RIx, v0RIy);
-				effectiveV1 = intersection != null ? intersection : new Point(v1RIx, v1RIy);
-				stopAfter = true;
-			}
-			else
-			{
-				// River enters the selection: use the line-intersection point for accuracy.
-				Point intersection = segmentBoundaryIntersection(new Point(v0RIx, v0RIy), new Point(v1RIx, v1RIy), selectionBoundsRI);
-				effectiveV0 = intersection != null ? intersection : new Point(v0RIx, v0RIy);
-				effectiveV1 = new Point(v1RIx, v1RIy);
-			}
-
-			Corner c0;
-			if (i == 0 && v0Inside && isSourceCornerAdjacentToWater(v0, originalEdits))
-			{
-				// Starting edge whose source endpoint is adjacent to water: seek the closest
-				// water-adjacent corner so the river reliably originates from a lake or ocean.
-				c0 = riToNewCornerAdjacentToWater(effectiveV0, selectionBoundsRI, newGraph, newEdits);
-			}
-			else
-			{
-				c0 = riToNewCorner(effectiveV0, selectionBoundsRI, newGraph);
-			}
-			Corner c1;
-			if (stopAfter)
-			{
-				// River exits the selection: snap to the closest border corner so the river reliably
-				// reaches the map edge rather than stopping at the nearest interior corner.
-				c1 = riToNewBorderCorner(effectiveV1, selectionBoundsRI, newGraph);
-			}
-			else if (i == polylineEdges.size() - 1 && isSourceCornerAdjacentToWater(v1, originalEdits))
-			{
-				// Terminal edge whose source endpoint is adjacent to water: seek the closest
-				// water-adjacent corner so the river reliably terminates at a lake or ocean.
-				c1 = riToNewCornerAdjacentToWater(effectiveV1, selectionBoundsRI, newGraph, newEdits);
-			}
-			else
-			{
-				c1 = riToNewCorner(effectiveV1, selectionBoundsRI, newGraph);
-			}
-
-			if (c0 != null && c1 != null && !c0.equals(c1))
-			{
-				int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(edgeLevel * riverLevelScale));
-				// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
-				Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
-				collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
-				pruneFingers(segmentEdgeLevels, c0, c1);
-				segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-				if (!segmentEdgeLevels.isEmpty())
-				{
-					if (firstCorner == null)
-						firstCorner = c0;
-					lastCorner = c1;
-				}
-			}
-			if (stopAfter)
-			{
-				lastEdgeWasStopAfter = true;
-				break;
+				if (firstCorner == null)
+					firstCorner = segment.c0();
+				lastCorner = segment.c1();
 			}
 		}
 
-		// Final overall prune to remove any residual fingers that emerge from interactions between
-		// consecutive source-edge paths. Per-segment pruning above ensures that individual paths
-		// are already clean, so this pass has far less to do and is much less likely to
-		// over-prune compared to running only the overall prune without per-segment pruning.
-		if (firstCorner != null && lastCorner != null && !firstCorner.equals(lastCorner))
-		{
-			pruneFingers(polylineEdgeLevels, firstCorner, lastCorner);
-		}
+		// Replace the final per-polyline finger prune with a path-simplification that also eliminates
+		// loops introduced when consecutive segment paths partially overlap in the new graph.
+		// Falls back to a no-op when the polyline has a gap (disconnected segments from a failed
+		// routing), preserving all routed edges since per-segment pruning already cleaned those up.
+		simplifyToPath(polylineEdgeLevels, firstCorner, lastCorner);
+
+		boolean lastEdgeWasStopAfter = !segments.isEmpty() && segments.get(segments.size() - 1).stopAfter();
 
 		// If the source polyline's terminal corner is adjacent to water but the last new-graph corner
 		// is not, the sub-map Voronoi may have placed the lake/ocean slightly farther than the
-		// source RI position. Extend the river by up to 2 hops via BFS to reach a water-adjacent
+		// source RI position. Extend the river by up to 5 hops via BFS to reach a water-adjacent
 		// corner. This is skipped for rivers that exit the selection (stopAfter), which are already
 		// handled by snapping to the border.
 		if (!lastEdgeWasStopAfter && lastCorner != null && !polylineEdgeLevels.isEmpty())
@@ -774,7 +664,7 @@ public class SubMapCreator
 			Corner sourceTerminal = polylineCorners.get(polylineCorners.size() - 1);
 			if (isSourceCornerAdjacentToWater(sourceTerminal, originalEdits) && !isNewCornerAdjacentToWater(lastCorner, newEdits))
 			{
-				Corner nearbyWater = findNearbyWaterCorner(lastCorner, newEdits, 2);
+				Corner nearbyWater = findNearbyWaterCorner(lastCorner, newEdits, 5);
 				if (nearbyWater != null)
 				{
 					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
@@ -782,13 +672,12 @@ public class SubMapCreator
 					Map<Edge, Integer> extensionEdges = new HashMap<>();
 					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-					lastCorner = nearbyWater;
 				}
 			}
 		}
 
 		// Symmetrically, if the source polyline's starting corner is adjacent to water but the
-		// first new-graph corner is not, extend backward by up to 2 hops to reach water.
+		// first new-graph corner is not, extend backward by up to 5 hops to reach water.
 		// Only applies when the starting corner was inside the selection (v0Inside on i==0);
 		// if the river entered from outside, the water is outside the sub-map.
 		if (firstCorner != null && !polylineEdgeLevels.isEmpty())
@@ -800,7 +689,7 @@ public class SubMapCreator
 					&& isSourceCornerAdjacentToWater(sourceStart, originalEdits)
 					&& !isNewCornerAdjacentToWater(firstCorner, newEdits))
 			{
-				Corner nearbyWater = findNearbyWaterCorner(firstCorner, newEdits, 2);
+				Corner nearbyWater = findNearbyWaterCorner(firstCorner, newEdits, 5);
 				if (nearbyWater != null)
 				{
 					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
@@ -808,7 +697,6 @@ public class SubMapCreator
 					Map<Edge, Integer> extensionEdges = new HashMap<>();
 					collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-					firstCorner = nearbyWater;
 				}
 			}
 		}
@@ -817,6 +705,105 @@ public class SubMapCreator
 		{
 			newEdits.edgeEdits.put(entry.getKey().index, new EdgeEdit(entry.getKey().index, entry.getValue()));
 		}
+	}
+
+	/**
+	 * Computes the list of new-graph river segments to route for the given source polyline. Handles clipping of source edges to the selection bounds, boundary intersection for entering/exiting
+	 * segments, and selection of the appropriate new-graph corners (water-adjacent, border, or plain closest). Stops early — including the triggering segment — when the river exits the selection.
+	 */
+	private static List<RiverSegment> computeRiverSegments(List<Corner> polylineCorners, List<Edge> polylineEdges, double riverLevelScale, Rectangle selectionBoundsRI, WorldGraph newGraph,
+			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
+	{
+		List<RiverSegment> segments = new ArrayList<>();
+		for (int i = 0; i < polylineEdges.size(); i++)
+		{
+			int edgeLevel = polylineEdges.get(i).river;
+			if (edgeLevel <= 0)
+				continue;
+
+			Corner sourceV0 = polylineCorners.get(i);
+			Corner sourceV1 = polylineCorners.get(i + 1);
+			Point sourceV0RI = new Point(sourceV0.loc.x / originalResolution, sourceV0.loc.y / originalResolution);
+			Point sourceV1RI = new Point(sourceV1.loc.x / originalResolution, sourceV1.loc.y / originalResolution);
+			boolean v0Inside = selectionBoundsRI.contains(sourceV0RI.x, sourceV0RI.y);
+			boolean v1Inside = selectionBoundsRI.contains(sourceV1RI.x, sourceV1RI.y);
+			int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(edgeLevel * riverLevelScale));
+
+			if (!v0Inside && !v1Inside)
+			{
+				// Edge entirely outside; handle the case where it passes through the selection.
+				Optional<Tuple2<Point, Point>> through = segmentThroughIntersections(sourceV0RI, sourceV1RI, selectionBoundsRI);
+				if (through.isPresent())
+				{
+					Corner c0 = riToNewCorner(through.get().getFirst(), selectionBoundsRI, newGraph);
+					Corner c1 = riToNewCorner(through.get().getSecond(), selectionBoundsRI, newGraph);
+					if (c0 != null && c1 != null && !c0.equals(c1))
+						segments.add(new RiverSegment(c0, c1, scaledLevel, false));
+				}
+				continue;
+			}
+
+			Point effectiveV0, effectiveV1;
+			boolean stopAfter = false;
+			if (v0Inside && v1Inside)
+			{
+				effectiveV0 = sourceV0RI;
+				effectiveV1 = sourceV1RI;
+			}
+			else if (v0Inside)
+			{
+				// River exits the selection: use the line-intersection point so the river ends at the
+				// correct map-edge position rather than snapping to the nearest boundary corner.
+				Point intersection = segmentBoundaryIntersection(sourceV0RI, sourceV1RI, selectionBoundsRI);
+				effectiveV0 = sourceV0RI;
+				effectiveV1 = intersection != null ? intersection : sourceV1RI;
+				stopAfter = true;
+			}
+			else
+			{
+				// River enters the selection: use the line-intersection point for accuracy.
+				Point intersection = segmentBoundaryIntersection(sourceV0RI, sourceV1RI, selectionBoundsRI);
+				effectiveV0 = intersection != null ? intersection : sourceV0RI;
+				effectiveV1 = sourceV1RI;
+			}
+
+			Corner c0;
+			if (i == 0 && v0Inside && isSourceCornerAdjacentToWater(sourceV0, originalEdits))
+			{
+				// Starting corner is adjacent to water: seek the closest water-adjacent new-graph
+				// corner so the river reliably originates from a lake or ocean.
+				c0 = riToNewCornerAdjacentToWater(effectiveV0, selectionBoundsRI, newGraph, newEdits);
+			}
+			else
+			{
+				c0 = riToNewCorner(effectiveV0, selectionBoundsRI, newGraph);
+			}
+
+			Corner c1;
+			if (stopAfter)
+			{
+				// River exits the selection: snap to the closest border corner so the river reliably
+				// reaches the map edge rather than stopping at the nearest interior corner.
+				c1 = riToNewBorderCorner(effectiveV1, selectionBoundsRI, newGraph);
+			}
+			else if (i == polylineEdges.size() - 1 && isSourceCornerAdjacentToWater(sourceV1, originalEdits))
+			{
+				// Terminal corner is adjacent to water: seek the closest water-adjacent new-graph
+				// corner so the river reliably terminates at a lake or ocean.
+				c1 = riToNewCornerAdjacentToWater(effectiveV1, selectionBoundsRI, newGraph, newEdits);
+			}
+			else
+			{
+				c1 = riToNewCorner(effectiveV1, selectionBoundsRI, newGraph);
+			}
+
+			if (c0 != null && c1 != null && !c0.equals(c1))
+				segments.add(new RiverSegment(c0, c1, scaledLevel, stopAfter));
+
+			if (stopAfter)
+				break;
+		}
+		return segments;
 	}
 
 	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Edge, Integer> edgeLevels, Predicate<Corner> avoidCorner)
@@ -874,6 +861,73 @@ public class SubMapCreator
 				}
 			}
 		}
+	}
+
+
+	/**
+	 * Reduces {@code edgeLevels} to a simple path from {@code start} to {@code end} by BFS within the edgeLevels subgraph, discarding any loops or dangling branches that {@link #pruneFingers}
+	 * cannot detect. If {@code start} cannot reach {@code end} (the polyline has a gap from a failed segment routing), leaves {@code edgeLevels} unchanged — per-segment pruning already cleaned
+	 * those segments individually.
+	 */
+	private static void simplifyToPath(Map<Edge, Integer> edgeLevels, Corner start, Corner end)
+	{
+		if (start == null || end == null || start.equals(end) || edgeLevels.isEmpty())
+			return;
+
+		// BFS from start to end using only edges already in edgeLevels.
+		Map<Corner, Edge> parentEdge = new HashMap<>();
+		Set<Corner> visited = new HashSet<>();
+		Queue<Corner> queue = new LinkedList<>();
+		visited.add(start);
+		queue.add(start);
+		while (!queue.isEmpty())
+		{
+			Corner current = queue.poll();
+			if (current.equals(end))
+				break;
+			for (Edge e : current.protrudes)
+			{
+				if (!edgeLevels.containsKey(e))
+					continue;
+				Corner neighbor = edgeOtherCorner(e, current);
+				if (neighbor == null || visited.contains(neighbor))
+					continue;
+				visited.add(neighbor);
+				parentEdge.put(neighbor, e);
+				queue.add(neighbor);
+			}
+		}
+
+		if (!parentEdge.containsKey(end))
+		{
+			// start cannot reach end — the polyline has a gap; leave edgeLevels as-is.
+			return;
+		}
+
+		// Trace back from end to start, keeping only the edges that are on the path.
+		Set<Edge> pathEdges = new HashSet<>();
+		Corner current = end;
+		while (!current.equals(start))
+		{
+			Edge e = parentEdge.get(current);
+			if (e == null)
+				break;
+			pathEdges.add(e);
+			current = edgeOtherCorner(e, current);
+		}
+		edgeLevels.keySet().retainAll(pathEdges);
+	}
+
+	/**
+	 * Returns the corner on the opposite end of {@code e} from {@code corner}, or {@code null} if {@code corner} is not an endpoint of {@code e}.
+	 */
+	private static Corner edgeOtherCorner(Edge e, Corner corner)
+	{
+		if (e.v0 != null && e.v0.equals(corner))
+			return e.v1;
+		if (e.v1 != null && e.v1.equals(corner))
+			return e.v0;
+		return null;
 	}
 
 	/**
