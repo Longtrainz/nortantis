@@ -435,6 +435,15 @@ public abstract class MapUpdater
 			return;
 		}
 
+		// Incremental updates require an existing rendered map to patch. If no draw is currently
+		// in progress and the map is not ready for interactions (e.g., cancel() was called while
+		// opening a new map), mapFromMapCreator will be null and the incremental update would crash.
+		// Drop it — the full draw that follows will redraw everything from scratch.
+		if (updateType == UpdateType.Incremental && !isMapBeingDrawn && !isMapReadyForInteractions)
+		{
+			return;
+		}
+
 		onDrawSubmitted(updateType);
 
 		if (isMapBeingDrawn)
