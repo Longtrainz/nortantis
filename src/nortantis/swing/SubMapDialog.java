@@ -796,14 +796,17 @@ public class SubMapDialog
 
 	private nortantis.geom.Dimension getPreviewContainerSize()
 	{
-		// When the image is cleared (null), previewContainer collapses to 0×0 inside the JScrollPane.
-		// Fall back to the viewport size so triggerPreviewRedraw can still start a draw at the correct dimensions.
-		int width = previewContainer != null ? previewContainer.getWidth() : 0;
-		int height = previewContainer != null ? previewContainer.getHeight() : 0;
-		if ((width <= 0 || height <= 0) && previewScroll != null)
+		// Always use the viewport size as the primary measure. The container's current size reflects the
+		// previous image and can be stale — e.g. if the dialog was resized smaller after the last draw,
+		// previewContainer is still sized to the old (larger) image, so using it would produce an
+		// oversized new image and cause a scrollbar that New Seed cannot clear.
+		// Fall back to the container only when the viewport has not been laid out yet (size is zero).
+		int width = previewScroll != null ? previewScroll.getViewport().getWidth() : 0;
+		int height = previewScroll != null ? previewScroll.getViewport().getHeight() : 0;
+		if ((width <= 0 || height <= 0) && previewContainer != null)
 		{
-			width = previewScroll.getViewport().getWidth();
-			height = previewScroll.getViewport().getHeight();
+			width = previewContainer.getWidth();
+			height = previewContainer.getHeight();
 		}
 		if (width <= 0 || height <= 0)
 		{
