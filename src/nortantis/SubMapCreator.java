@@ -16,6 +16,8 @@ import nortantis.graph.voronoi.Edge;
 import nortantis.platform.Font;
 import nortantis.swing.MapEdits;
 
+import nortantis.util.Tuple2;
+
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
@@ -630,7 +632,7 @@ public class SubMapCreator
 		Predicate<Corner> avoidCoastAndOcean = c -> c.isCoast || c.isOcean || c.isWater;
 
 		// New-graph edges → their river level, accumulated across all source segments of this polyline.
-		Map<Edge, Integer> polylineEdgeLevels = new HashMap<>();
+		Map <Edge, Integer> polylineEdgeLevels = new HashMap<>();
 		Corner firstCorner = null;
 		Corner lastCorner = null;
 		boolean lastEdgeWasStopAfter = false;
@@ -654,17 +656,16 @@ public class SubMapCreator
 			if (!v0Inside && !v1Inside)
 			{
 				// Edge entirely outside; handle the case where it passes through the selection.
-				List<Point> through = segmentThroughIntersections(new Point(v0RIx, v0RIy), new Point(v1RIx, v1RIy), selectionBoundsRI);
-				if (through.size() == 2)
+				Optional<Tuple2<Point, Point>> through = segmentThroughIntersections(new Point(v0RIx, v0RIy), new Point(v1RIx, v1RIy), selectionBoundsRI);
+				if (through.isPresent())
 				{
 					int scaledLevel = Math.min(River.MAX_RIVER_LEVEL, (int) Math.round(edgeLevel * riverLevelScale));
-					Corner c0 = riToNewCorner(through.get(0), selectionBoundsRI, newGraph);
-					Corner c1 = riToNewCorner(through.get(1), selectionBoundsRI, newGraph);
+					Corner c0 = riToNewCorner(through.get().getFirst(), selectionBoundsRI, newGraph);
+					Corner c1 = riToNewCorner(through.get().getSecond(), selectionBoundsRI, newGraph);
 					if (c0 != null && c1 != null && !c0.equals(c1))
 					{
 						// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
 						Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
-						// TODO Pass in a predicate for avoidEdge that makes the search avoid edges it has already followed. I want to see if that can make the pruneFingers method unnecessary.
 						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
 						pruneFingers(segmentEdgeLevels, c0, c1);
 						segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
@@ -1097,12 +1098,12 @@ public class SubMapCreator
 			else
 			{
 				// Both outside: the segment may still pass through the rectangle.
-				List<Point> throughPoints = segmentThroughIntersections(prev, curr, selectionBounds);
-				if (throughPoints.size() == 2)
+				Optional<Tuple2<Point, Point>> throughPoints = segmentThroughIntersections(prev, curr, selectionBounds);
+				if (throughPoints.isPresent())
 				{
 					List<Point> subPath = new ArrayList<>();
-					subPath.add(transformRIPoint(throughPoints.get(0), selectionBounds, newWidth, newHeight));
-					subPath.add(transformRIPoint(throughPoints.get(1), selectionBounds, newWidth, newHeight));
+					subPath.add(transformRIPoint(throughPoints.get().getFirst(), selectionBounds, newWidth, newHeight));
+					subPath.add(transformRIPoint(throughPoints.get().getSecond(), selectionBounds, newWidth, newHeight));
 					result.add(subPath);
 				}
 			}
@@ -1118,10 +1119,10 @@ public class SubMapCreator
 	}
 
 	/**
-	 * When both endpoints of segment P1→P2 are outside {@code rect}, finds the two boundary intersection points (ordered from P1 to P2) if the segment passes through the rectangle. Returns an empty
-	 * list if there are fewer than two distinct intersections.
+	 * When both endpoints of segment P1→P2 are outside {@code rect}, finds the two boundary intersection points (ordered from P1 to P2) if the segment passes through the rectangle. Returns empty
+	 * if there are fewer than two distinct intersections.
 	 */
-	private static List<Point> segmentThroughIntersections(Point p1, Point p2, Rectangle rect)
+	private static Optional<Tuple2<Point, Point>> segmentThroughIntersections(Point p1, Point p2, Rectangle rect)
 	{
 		double dx = p2.x - p1.x;
 		double dy = p2.y - p1.y;
@@ -1188,9 +1189,9 @@ public class SubMapCreator
 		{
 			double[] first = hits.get(0);
 			double[] last = hits.get(hits.size() - 1);
-			return List.of(new Point(first[1], first[2]), new Point(last[1], last[2]));
+			return Optional.of(new Tuple2<>(new Point(first[1], first[2]), new Point(last[1], last[2])));
 		}
-		return List.of();
+		return Optional.empty();
 	}
 
 	/**
