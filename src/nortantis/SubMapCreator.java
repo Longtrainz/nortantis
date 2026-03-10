@@ -883,24 +883,9 @@ public class SubMapCreator
 	private static Corner riToNewBorderCorner(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph)
 	{
 		Point newGraphPoint = riToNewGraphPoint(riPoint, selectionBoundsRI, newGraph);
-		double bestDist = Double.MAX_VALUE;
-		Corner bestCorner = null;
-		for (Corner corner : newGraph.corners)
-		{
-			if (corner.isBorder)
-			{
-				double dx = corner.loc.x - newGraphPoint.x;
-				double dy = corner.loc.y - newGraphPoint.y;
-				double dist = dx * dx + dy * dy;
-				if (dist < bestDist)
-				{
-					bestDist = dist;
-					bestCorner = corner;
-				}
-			}
-		}
+		Corner borderCorner = findClosestCornerMatching(newGraph.corners, newGraphPoint, c -> c.isBorder);
 		// Fall back to the plain closest corner if no border corner is found (shouldn't normally happen).
-		return bestCorner != null ? bestCorner : newGraph.findClosestCorner(newGraphPoint);
+		return borderCorner != null ? borderCorner : newGraph.findClosestCorner(newGraphPoint);
 	}
 
 	/**
@@ -984,14 +969,24 @@ public class SubMapCreator
 			return closest;
 		}
 		Point newGraphPoint = riToNewGraphPoint(riPoint, selectionBoundsRI, newGraph);
+		Corner waterCorner = findClosestCornerMatching(newGraph.corners, newGraphPoint, c -> isNewCornerAdjacentToWater(c, newEdits));
+		// Fall back to the plain closest corner if no water-adjacent corner exists.
+		return waterCorner != null ? waterCorner : closest;
+	}
+
+	/**
+	 * Returns the closest corner in {@code corners} to {@code target} that satisfies {@code predicate}, or {@code null} if none match.
+	 */
+	private static Corner findClosestCornerMatching(List<Corner> corners, Point target, Predicate<Corner> predicate)
+	{
 		double bestDist = Double.MAX_VALUE;
-		Corner bestCorner = closest;
-		for (Corner corner : newGraph.corners)
+		Corner bestCorner = null;
+		for (Corner corner : corners)
 		{
-			if (isNewCornerAdjacentToWater(corner, newEdits))
+			if (predicate.test(corner))
 			{
-				double dx = corner.loc.x - newGraphPoint.x;
-				double dy = corner.loc.y - newGraphPoint.y;
+				double dx = corner.loc.x - target.x;
+				double dy = corner.loc.y - target.y;
 				double dist = dx * dx + dy * dy;
 				if (dist < bestDist)
 				{
