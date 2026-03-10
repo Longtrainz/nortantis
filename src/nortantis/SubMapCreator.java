@@ -882,18 +882,15 @@ public class SubMapCreator
 	 */
 	private static Corner riToNewBorderCorner(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph)
 	{
-		double clampedX = Math.max(selectionBoundsRI.x, Math.min(selectionBoundsRI.x + selectionBoundsRI.width, riPoint.x));
-		double clampedY = Math.max(selectionBoundsRI.y, Math.min(selectionBoundsRI.y + selectionBoundsRI.height, riPoint.y));
-		double newX = (clampedX - selectionBoundsRI.x) / selectionBoundsRI.width * newGraph.getWidth();
-		double newY = (clampedY - selectionBoundsRI.y) / selectionBoundsRI.height * newGraph.getHeight();
+		Point newGraphPoint = riToNewGraphPoint(riPoint, selectionBoundsRI, newGraph);
 		double bestDist = Double.MAX_VALUE;
 		Corner bestCorner = null;
 		for (Corner corner : newGraph.corners)
 		{
 			if (corner.isBorder)
 			{
-				double dx = corner.loc.x - newX;
-				double dy = corner.loc.y - newY;
+				double dx = corner.loc.x - newGraphPoint.x;
+				double dy = corner.loc.y - newGraphPoint.y;
 				double dist = dx * dx + dy * dy;
 				if (dist < bestDist)
 				{
@@ -903,7 +900,7 @@ public class SubMapCreator
 			}
 		}
 		// Fall back to the plain closest corner if no border corner is found (shouldn't normally happen).
-		return bestCorner != null ? bestCorner : riToNewCorner(riPoint, selectionBoundsRI, newGraph);
+		return bestCorner != null ? bestCorner : newGraph.findClosestCorner(newGraphPoint);
 	}
 
 	/**
@@ -986,18 +983,15 @@ public class SubMapCreator
 		{
 			return closest;
 		}
-		double clampedX = Math.max(selectionBoundsRI.x, Math.min(selectionBoundsRI.x + selectionBoundsRI.width, riPoint.x));
-		double clampedY = Math.max(selectionBoundsRI.y, Math.min(selectionBoundsRI.y + selectionBoundsRI.height, riPoint.y));
-		double newX = (clampedX - selectionBoundsRI.x) / selectionBoundsRI.width * newGraph.getWidth();
-		double newY = (clampedY - selectionBoundsRI.y) / selectionBoundsRI.height * newGraph.getHeight();
+		Point newGraphPoint = riToNewGraphPoint(riPoint, selectionBoundsRI, newGraph);
 		double bestDist = Double.MAX_VALUE;
 		Corner bestCorner = closest;
 		for (Corner corner : newGraph.corners)
 		{
 			if (isNewCornerAdjacentToWater(corner, newEdits))
 			{
-				double dx = corner.loc.x - newX;
-				double dy = corner.loc.y - newY;
+				double dx = corner.loc.x - newGraphPoint.x;
+				double dy = corner.loc.y - newGraphPoint.y;
 				double dist = dx * dx + dy * dy;
 				if (dist < bestDist)
 				{
@@ -1010,15 +1004,23 @@ public class SubMapCreator
 	}
 
 	/**
-	 * Maps an RI-space point to the closest corner in the new graph. Clamps to the selection bounds as a safety net for floating-point edge cases from intersection calculations.
+	 * Converts an RI-space point to new-graph pixel coordinates, clamping to the selection bounds as a safety net for floating-point edge cases from intersection calculations.
 	 */
-	private static Corner riToNewCorner(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph)
+	private static Point riToNewGraphPoint(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph)
 	{
 		double clampedX = Math.max(selectionBoundsRI.x, Math.min(selectionBoundsRI.x + selectionBoundsRI.width, riPoint.x));
 		double clampedY = Math.max(selectionBoundsRI.y, Math.min(selectionBoundsRI.y + selectionBoundsRI.height, riPoint.y));
 		double newX = (clampedX - selectionBoundsRI.x) / selectionBoundsRI.width * newGraph.getWidth();
 		double newY = (clampedY - selectionBoundsRI.y) / selectionBoundsRI.height * newGraph.getHeight();
-		return newGraph.findClosestCorner(new Point(newX, newY));
+		return new Point(newX, newY);
+	}
+
+	/**
+	 * Maps an RI-space point to the closest corner in the new graph. Clamps to the selection bounds as a safety net for floating-point edge cases from intersection calculations.
+	 */
+	private static Corner riToNewCorner(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph)
+	{
+		return newGraph.findClosestCorner(riToNewGraphPoint(riPoint, selectionBoundsRI, newGraph));
 	}
 
 	private static final float maxFontSize = 240f;
