@@ -1499,7 +1499,10 @@ public class LandWaterTool extends EditorTool
 		super.onSwitchingTo();
 		updater.doWhenMapIsReadyForInteractions(() ->
 		{
-			updateHighlightsForMousePosition(mapEditingPanel.getMousePosition());
+			if (isSelected())
+			{
+				updateHighlightsForMousePosition(mapEditingPanel.getMousePosition());
+			}
 		});
 	}
 

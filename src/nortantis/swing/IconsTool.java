@@ -2145,7 +2145,13 @@ public class IconsTool extends EditorTool
 	public void onSwitchingTo()
 	{
 		super.onSwitchingTo();
-		updater.doWhenMapIsReadyForInteractions(this::updateHighlightsForMousePosition);
+		updater.doWhenMapIsReadyForInteractions(() ->
+		{
+			if (isSelected())
+			{
+				updateHighlightsForMousePosition();
+			}
+		});
 	}
 
 	private void updateHighlightsForMousePosition()
