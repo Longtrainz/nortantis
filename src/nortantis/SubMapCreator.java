@@ -668,9 +668,12 @@ public class SubMapCreator
 						collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
 						pruneFingers(segmentEdgeLevels, c0, c1);
 						segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-						if (firstCorner == null)
-							firstCorner = c0;
-						lastCorner = c1;
+						if (!segmentEdgeLevels.isEmpty())
+						{
+							if (firstCorner == null)
+								firstCorner = c0;
+							lastCorner = c1;
+						}
 					}
 				}
 				continue;
@@ -737,9 +740,12 @@ public class SubMapCreator
 				collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, segmentEdgeLevels, avoidCoastAndOcean);
 				pruneFingers(segmentEdgeLevels, c0, c1);
 				segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-				if (firstCorner == null)
-					firstCorner = c0;
-				lastCorner = c1;
+				if (!segmentEdgeLevels.isEmpty())
+				{
+					if (firstCorner == null)
+						firstCorner = c0;
+					lastCorner = c1;
+				}
 			}
 			if (stopAfter)
 			{
