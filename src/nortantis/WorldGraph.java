@@ -3417,14 +3417,28 @@ public class WorldGraph extends VoronoiGraph
 
 	/**
 	 * Finds all rivers in the graph and returns them as ordered lists of edges. Each tributary that joins a main river is returned as a separate {@link River} object.
+	 * <p>
+	 * Seeding is done from corners adjacent to drawable river edges (i.e. {@code edge.river > RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN}), so both procedurally generated rivers and
+	 * user-drawn rivers are found.
+	 * </p>
 	 */
 	public List<River> findRivers()
 	{
+		Set<Corner> riverCorners = new HashSet<>();
+		for (Edge e : edges)
+		{
+			if (e.isRiver() && e.v0 != null && e.v1 != null)
+			{
+				riverCorners.add(e.v0);
+				riverCorners.add(e.v1);
+			}
+		}
+
 		List<River> rivers = new ArrayList<>();
 		Set<Corner> riversAlreadyFound = new HashSet<>();
-		for (Corner corner : corners)
+		for (Corner corner : riverCorners)
 		{
-			if (corner.river > River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN && !riversAlreadyFound.contains(corner))
+			if (!riversAlreadyFound.contains(corner))
 			{
 				River river = findRiver(riversAlreadyFound, corner);
 				riversAlreadyFound.addAll(river.getCorners());
