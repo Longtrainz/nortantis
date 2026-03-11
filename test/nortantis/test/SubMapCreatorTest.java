@@ -58,19 +58,7 @@ public class SubMapCreatorTest
 
 		List<River> rivers = newGraph.findRivers();
 
-		// TODO Remove this when Claude is done with it
-		StringBuilder debugInfo = new StringBuilder();
-		debugInfo.append("Rivers found: ").append(rivers.size()).append("\n");
-		for (int i = 0; i < rivers.size(); i++)
-		{
-			River r = rivers.get(i);
-			List<Corner> orderedCorners = r.getOrderedCorners();
-			debugInfo.append("  River ").append(i).append(": ").append(r.size()).append(" edges, corners: ");
-			debugInfo.append(orderedCorners.stream().map(c -> String.valueOf(c.index)).collect(java.util.stream.Collectors.joining(",")));
-			debugInfo.append("\n");
-		}
-
-		assertEquals(2, rivers.size(), "Sub-map should contain exactly 2 rivers (expected a main river and a tributary)\n" + debugInfo);
+		assertEquals(2, rivers.size(), "Sub-map should contain exactly 2 rivers (expected a main river and a tributary)");
 
 		// Build corner sets for each river and check that some pair shares a corner,
 		// indicating the rivers are joined at a confluence.
@@ -100,7 +88,7 @@ public class SubMapCreatorTest
 			String failedMapPath = Paths.get("unit test files", "failed maps", "subMapRiversFormConfluence.png").toString();
 			Image map = new MapCreator().createMap(subMapSettings, null, null);
 			ImageHelper.getInstance().write(map, failedMapPath);
-			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: " + failedMapPath + "\n" + debugInfo);
+			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: " + failedMapPath);
 		}
 	}
 }

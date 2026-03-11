@@ -634,7 +634,29 @@ public class SubMapCreator
 		{
 			// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
 			Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
-			collectGreedyPathEdges(segment.c0(), segment.c1(), segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean);
+
+			// If the segment starts at the current endpoint and that endpoint is degree-1 in the
+			// accumulated map, the previous greedy path ended there as a dead-end: the greedy
+			// algorithm retraced the incoming edge rather than advancing forward. Avoid that
+			// incoming edge when routing this segment so the path is forced to find a genuine
+			// forward route. This keeps the degree-1 corner as an interior node rather than a
+			// prunable dead-end, which is critical when that corner is a river confluence shared
+			// with another river.
+			Predicate<Edge> avoidIncomingEdge = null;
+			if (lastCorner != null && segment.c0().equals(lastCorner) && cornerDegreeInEdges(lastCorner, polylineEdgeLevels) == 1)
+			{
+				for (Edge e : polylineEdgeLevels.keySet())
+				{
+					if ((e.v0 != null && e.v0.equals(lastCorner)) || (e.v1 != null && e.v1.equals(lastCorner)))
+					{
+						final Edge incomingEdge = e;
+						avoidIncomingEdge = edge -> edge.equals(incomingEdge);
+						break;
+					}
+				}
+			}
+
+			collectGreedyPathEdges(segment.c0(), segment.c1(), segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean, avoidIncomingEdge);
 			pruneFingers(segmentEdgeLevels, segment.c0(), segment.c1());
 			segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 			if (!segmentEdgeLevels.isEmpty())
@@ -824,6 +846,17 @@ public class SubMapCreator
 		{
 			edgeLevels.merge(e, scaledLevel, Math::max);
 		}
+	}
+
+	private static int cornerDegreeInEdges(Corner corner, Map<Edge, Integer> edgeLevels)
+	{
+		int degree = 0;
+		for (Edge e : edgeLevels.keySet())
+		{
+			if ((e.v0 != null && e.v0.equals(corner)) || (e.v1 != null && e.v1.equals(corner)))
+				degree++;
+		}
+		return degree;
 	}
 
 	/**
