@@ -1839,6 +1839,12 @@ public class MapCreator implements WarningLogger
 
 		if (edgeChanges == null)
 		{
+			// Since edits.edgeEdits does not always contain an entry for every edge, when the list of changes to apply is null, clear out the fields that can change before applying edge edits.
+			for (Edge edge : graph.edges)
+			{
+				edge.river = 0;
+			}
+
 			edgeChanges = edits.edgeEdits.values();
 		}
 

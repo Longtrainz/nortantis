@@ -9,6 +9,7 @@ public class EdgeEdit implements Serializable
 
 	public int riverLevel;
 	public final int index;
+	// Note - if you add any new fields here, make sure to clear them in MapCreator.applyEdgeEdits when edgeChanges is null.
 
 	public EdgeEdit(int index, int riverLevel)
 	{
