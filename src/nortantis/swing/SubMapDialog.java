@@ -37,7 +37,6 @@ public class SubMapDialog
 	// Captured state from the current map at construction time.
 	private final MapSettings origSettings;
 	private final WorldGraph origGraph;
-	private final MapEdits origEdits;
 	/** The display-quality resolution scale at which origGraph was created. */
 	private final double origResolution;
 
@@ -79,13 +78,24 @@ public class SubMapDialog
 	/** Radio button for custom polygon count; instance field so createPreviewUpdater can read its state. */
 	private JRadioButton customRadio;
 	private int clampedOneXWorldSize;
+	static final int minPolygonsInSubMap = 1000;
+
+	/**
+	 * Computes the clamped 1× world size (polygon count) for a sub-map selection. This matches the default "Match source detail" value shown in the sub-map dialog.
+	 */
+	public static int computeDefaultWorldSize(MapSettings origSettings, Rectangle selectionBoundsRI)
+	{
+		double origMapArea = origSettings.generatedWidth * (double) origSettings.generatedHeight;
+		double selArea = selectionBoundsRI.width * selectionBoundsRI.height;
+		double oneXWorldSize = origSettings.worldSize * selArea / origMapArea;
+		return (int) Math.round(Math.clamp(oneXWorldSize, minPolygonsInSubMap, SettingsGenerator.maxWorldSize));
+	}
 
 	public SubMapDialog(MainWindow mainWindow)
 	{
 		this.mainWindow = mainWindow;
 		this.origSettings = mainWindow.getSettingsFromGUI(false);
 		this.origGraph = mainWindow.updater.mapParts.graph;
-		this.origEdits = mainWindow.edits.deepCopy();
 		this.origResolution = mainWindow.displayQualityScale;
 	}
 
@@ -451,8 +461,7 @@ public class SubMapDialog
 		double origMapAreaForDefault = origSettings.generatedWidth * (double) origSettings.generatedHeight;
 		double selAreaForDefault = selBoundsRI.width * selBoundsRI.height;
 		oneXWorldSize = origSettings.worldSize * selAreaForDefault / origMapAreaForDefault;
-		final int minPolygonsInSubMap = 1000;
-		clampedOneXWorldSize = (int) Math.round(Math.clamp(oneXWorldSize, minPolygonsInSubMap, SettingsGenerator.maxWorldSize));
+		clampedOneXWorldSize = computeDefaultWorldSize(origSettings, selBoundsRI);
 		boolean matchDetailPossible = oneXWorldSize >= minPolygonsInSubMap;
 
 		// Advice label explaining key sub-map limitations.
@@ -731,7 +740,7 @@ public class SubMapDialog
 				try
 				{
 					boolean redistributeIcons = customRadio != null && customRadio.isSelected();
-					MapSettings settings = SubMapCreator.createSubMapSettings(origSettings, origGraph, origEdits, selBoundsRI, getSubmapWorldSize(), origResolution, subMapSeed, redistributeIcons);
+					MapSettings settings = SubMapCreator.createSubMapSettings(origSettings, origGraph, selBoundsRI, getSubmapWorldSize(), origResolution, subMapSeed, redistributeIcons);
 					// Set resolution to 1.0 as a baseline; MapCreator.createMap will override it via
 					// Background.calcMapBoundsAndAdjustResolutionIfNeeded to fit the maxMapSize passed to the updater.
 					settings.resolution = 1.0;

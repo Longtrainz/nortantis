@@ -1657,6 +1657,17 @@ public class MapCreator implements WarningLogger
 		return MapCreator.createGraph(settings, mapBounds.width, mapBounds.height, r, settings.resolution, createElevationBiomesLakesAndRegions);
 	}
 
+	/**
+	 * Creates a WorldGraph and applies edge edits (e.g. river levels) from settings.edits. Intended for use in unit tests that need a fully initialized graph without rendering.
+	 */
+	public static WorldGraph createGraphForUnitTests(MapSettings settings)
+	{
+		Dimension mapBounds = Background.calcMapBoundsAndAdjustResolutionIfNeeded(settings, null);
+		Random r = new Random(settings.randomSeed);
+		WorldGraph graph = MapCreator.createGraph(settings, mapBounds.width, mapBounds.height, r, settings.resolution, !settings.edits.isInitialized());
+		return graph;
+	}
+
 	private static WorldGraph createGraph(MapSettings settings, double width, double height, Random r, double resolutionScale, boolean createElevationBiomesLakesAndRegions)
 	{
 		double widthToUse, heightToUse;

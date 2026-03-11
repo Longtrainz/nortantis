@@ -34,8 +34,6 @@ public class SubMapCreator
 	 * 		The original map settings.
 	 * @param originalGraph
 	 * 		The original world graph (used for land/water lookup).
-	 * @param originalEdits
-	 * 		The original map edits (used for land/water, region, text, icons, roads).
 	 * @param selectionBoundsRI
 	 * 		The selection bounds in resolution-invariant (RI) coordinates.
 	 * @param subMapWorldSize
@@ -44,7 +42,7 @@ public class SubMapCreator
 	 * 		The resolution at which originalGraph was created (i.e. the display quality scale), used to convert resolution-invariant coordinates to originalGraph pixel coordinates.
 	 * @return New MapSettings for the sub-map, with pre-populated edits.
 	 */
-	public static MapSettings createSubMapSettings(MapSettings originalSettings, WorldGraph originalGraph, MapEdits originalEdits, Rectangle selectionBoundsRI, int subMapWorldSize,
+	public static MapSettings createSubMapSettings(MapSettings originalSettings, WorldGraph originalGraph, Rectangle selectionBoundsRI, int subMapWorldSize,
 			double originalResolution, long seed, boolean redistributeIcons)
 	{
 		// Compute new dimensions and world size.
@@ -117,7 +115,7 @@ public class SubMapCreator
 
 		// For each new center, use majority/plurality voting to assign water/lake/region.
 		MapEdits newEdits = new MapEdits();
-		Map<Integer, List<Integer>> originalRegionToNewCenters = buildCenterEdits(newGraph, originalGraph, originalEdits, selectionBoundsRI, originalResolution, newEdits);
+		Map<Integer, List<Integer>> originalRegionToNewCenters = buildCenterEdits(newGraph, originalGraph, originalSettings.edits, selectionBoundsRI, originalResolution, newEdits);
 
 		// Propagate coast/corner flags now that isWater/isLake are set on all centers.
 		// markLakes must run first so that updateCoastAndCornerFlags sees the correct isLake values
@@ -129,16 +127,16 @@ public class SubMapCreator
 
 		// Build remaining MapEdits.
 
-		transferRegionEdits(originalGraph, originalEdits, originalRegionToNewCenters, newEdits);
+		transferRegionEdits(originalGraph, originalSettings.edits, originalRegionToNewCenters, newEdits);
 
-		transferRivers(originalGraph, originalEdits, newGraph, selectionBoundsRI, newEdits, originalResolution);
+		transferRivers(originalGraph, originalSettings.edits, newGraph, selectionBoundsRI, newEdits, originalResolution);
 
-		transferText(originalEdits, selectionBoundsRI, newEdits, newGenWidth, newGenHeight, fontScale);
+		transferText(originalSettings.edits, selectionBoundsRI, newEdits, newGenWidth, newGenHeight, fontScale);
 
-		transferFreeIcons(originalEdits, originalGraph, newGraph, selectionBoundsRI, originalResolution, newEdits, newGenWidth, newGenHeight, redistributeIcons, seed);
+		transferFreeIcons(originalSettings.edits, originalGraph, newGraph, selectionBoundsRI, originalResolution, newEdits, newGenWidth, newGenHeight, redistributeIcons, seed);
 		newEdits.hasIconEdits = true;
 
-		transferRoads(originalEdits, selectionBoundsRI, newGenWidth, newGenHeight, newEdits);
+		transferRoads(originalSettings.edits, selectionBoundsRI, newGenWidth, newGenHeight, newEdits);
 
 		// Attach the new edits to the new settings.
 		newSettings.edits = newEdits;
