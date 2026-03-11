@@ -225,17 +225,61 @@ public class SubMapDialog
 		});
 
 		// Wire spinners: when edited by user, update the selection box.
-		ChangeListener spinnerListener = e ->
+		ChangeListener xYListener = e ->
 		{
 			if (!updatingSpinnersFromBox)
 			{
 				applySpinnersToSelectionBox();
 			}
 		};
-		xSpinner.addChangeListener(spinnerListener);
-		ySpinner.addChangeListener(spinnerListener);
-		widthSpinner.addChangeListener(spinnerListener);
-		heightSpinner.addChangeListener(spinnerListener);
+		xSpinner.addChangeListener(xYListener);
+		ySpinner.addChangeListener(xYListener);
+
+		widthSpinner.addChangeListener(e ->
+		{
+			if (!updatingSpinnersFromBox)
+			{
+				if (selectedAspectRatio != 0.0)
+				{
+					int w = ((Number) widthSpinner.getValue()).intValue();
+					int h = (int) Math.round(w / selectedAspectRatio);
+					h = Math.max(1, Math.min(getMapDisplayHeight(), h));
+					updatingSpinnersFromBox = true;
+					try
+					{
+						heightSpinner.setValue(h);
+					}
+					finally
+					{
+						updatingSpinnersFromBox = false;
+					}
+				}
+				applySpinnersToSelectionBox();
+			}
+		});
+
+		heightSpinner.addChangeListener(e ->
+		{
+			if (!updatingSpinnersFromBox)
+			{
+				if (selectedAspectRatio != 0.0)
+				{
+					int h = ((Number) heightSpinner.getValue()).intValue();
+					int w = (int) Math.round(h * selectedAspectRatio);
+					w = Math.max(1, Math.min(getMapDisplayWidth(), w));
+					updatingSpinnersFromBox = true;
+					try
+					{
+						widthSpinner.setValue(w);
+					}
+					finally
+					{
+						updatingSpinnersFromBox = false;
+					}
+				}
+				applySpinnersToSelectionBox();
+			}
+		});
 
 		step1Dialog.addWindowListener(new WindowAdapter()
 		{
