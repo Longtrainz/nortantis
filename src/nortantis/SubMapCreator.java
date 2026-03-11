@@ -100,7 +100,7 @@ public class SubMapCreator
 		double originalMapArea = originalSettings.generatedWidth * (double) originalSettings.generatedHeight;
 		double oneXWorldSize = originalSettings.worldSize * selectionArea / originalMapArea;
 		double detailRatio = oneXWorldSize > 0 ? newWorldSize / oneXWorldSize : 1.0;
- 		double fontScale = Math.max(1.0, zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.25)));
+		double fontScale = Math.max(1.0, zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.25)));
 		newSettings.titleFont = scaleFontSize(newSettings.titleFont, fontScale);
 		newSettings.regionFont = scaleFontSize(newSettings.regionFont, fontScale);
 		newSettings.mountainRangeFont = scaleFontSize(newSettings.mountainRangeFont, fontScale);
@@ -590,8 +590,8 @@ public class SubMapCreator
 	 * Computes a scale factor for river levels when transferring from the original graph to the sub-map.
 	 * <p>
 	 * Rivers should appear proportionally wider when zoomed in. Width ∝ sqrt(riverLevel), so scaling width by zoomFactor requires scaling level by zoomFactor². When the sub-map has higher polygon
-	 * density than a 1× equivalent (detailRatio > 1), rivers are widened less, matching the same attenuation used for font scaling in transferText. The floor of 1.0 ensures rivers are never
-	 * narrower in the sub-map than in the source.
+	 * density than a 1× equivalent (detailRatio > 1), rivers are widened less, matching the same attenuation used for font scaling in transferText. The floor of 1.0 ensures rivers are never narrower
+	 * in the sub-map than in the source.
 	 * </p>
 	 */
 	private static double computeRiverLevelScale(WorldGraph originalGraph, double originalResolution, Rectangle selectionBoundsRI, WorldGraph newGraph)
@@ -608,13 +608,14 @@ public class SubMapCreator
 		return Math.max(1.0, zoomFactor * zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.5)));
 	}
 
-	private record RiverSegment(Corner c0, Corner c1, int level, boolean stopAfter) {}
+	private record RiverSegment(Corner c0, Corner c1, int level, boolean stopAfter)
+	{
+	}
 
 	/**
-	 * Transfers each edge of an ordered river polyline to the sub-map. Delegates endpoint computation to
-	 * {@link #computeRiverSegments}, then routes each segment via {@link WorldGraph#findPathGreedy} with
-	 * per-segment finger pruning. A final {@link #simplifyToPath} pass removes cross-segment loops; if the
-	 * polyline has a gap from a failed routing it falls back to a no-op so disconnected segments survive.
+	 * Transfers each edge of an ordered river polyline to the sub-map. Delegates endpoint computation to {@link #computeRiverSegments}, then routes each segment via {@link WorldGraph#findPathGreedy}
+	 * with per-segment finger pruning. A final {@link #simplifyToPath} pass removes cross-segment loops; if the polyline has a gap from a failed routing it falls back to a no-op so disconnected
+	 * segments survive.
 	 */
 	private static void transferPolylineToSubMap(List<Corner> polylineCorners, List<Edge> polylineEdges, double riverLevelScale, Rectangle selectionBoundsRI, WorldGraph newGraph,
 			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
@@ -683,20 +684,23 @@ public class SubMapCreator
 		if (firstCorner != null && !polylineEdgeLevels.isEmpty())
 		{
 			Corner sourceStart = polylineCorners.get(0);
-			double sourceStartRIx = sourceStart.loc.x / originalResolution;
-			double sourceStartRIy = sourceStart.loc.y / originalResolution;
-			if (selectionBoundsRI.contains(sourceStartRIx, sourceStartRIy)
-					&& isSourceCornerAdjacentToWater(sourceStart, originalEdits)
-					&& !isNewCornerAdjacentToWater(firstCorner, newEdits))
+			Point sourceStartRI = new Point(sourceStart.loc.x / originalResolution, sourceStart.loc.y / originalResolution);
+			if (selectionBoundsRI.contains(sourceStartRI) && isSourceCornerAdjacentToWater(sourceStart, originalEdits) && !isNewCornerAdjacentToWater(firstCorner, newEdits))
 			{
 				Corner nearbyWater = findNearbyWaterCorner(firstCorner, newEdits, 5);
 				if (nearbyWater != null)
 				{
-					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
-					// New-graph edges → river level for the short extension path to water.
-					Map<Edge, Integer> extensionEdges = new HashMap<>();
-					collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
-					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
+					// Find the closest edge to determine the river level because that's the one we'll probably attach the new segment to.
+					Optional<Edge> closest = polylineEdgeLevels.keySet().stream().filter(edge -> edge.v0 != null && edge.v1 != null)
+							.min(Comparator.comparingDouble(edge -> Math.min(edge.v0.loc.distanceTo(sourceStart.loc), edge.v1.loc.distanceTo(sourceStart.loc))));
+					if (closest.isPresent())
+					{
+						int extensionLevel = polylineEdgeLevels.get(closest.get());
+						// New-graph edges → river level for the short extension path to water.
+						Map<Edge, Integer> extensionEdges = new HashMap<>();
+						collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
+						extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
+					}
 				}
 			}
 		}
@@ -846,7 +850,7 @@ public class SubMapCreator
 			{
 				if (entry.getValue() == 1 && !entry.getKey().equals(startCorner) && !entry.getKey().equals(endCorner))
 				{
-					for (Iterator<Edge> it = edgeLevels.keySet().iterator(); it.hasNext();)
+					for (Iterator<Edge> it = edgeLevels.keySet().iterator(); it.hasNext(); )
 					{
 						Edge e = it.next();
 						if ((e.v0 != null && e.v0.equals(entry.getKey())) || (e.v1 != null && e.v1.equals(entry.getKey())))
@@ -865,9 +869,9 @@ public class SubMapCreator
 
 
 	/**
-	 * Reduces {@code edgeLevels} to a simple path from {@code start} to {@code end} by BFS within the edgeLevels subgraph, discarding any loops or dangling branches that {@link #pruneFingers}
-	 * cannot detect. If {@code start} cannot reach {@code end} (the polyline has a gap from a failed segment routing), leaves {@code edgeLevels} unchanged — per-segment pruning already cleaned
-	 * those segments individually.
+	 * Reduces {@code edgeLevels} to a simple path from {@code start} to {@code end} by BFS within the edgeLevels subgraph, discarding any loops or dangling branches that {@link #pruneFingers} cannot
+	 * detect. If {@code start} cannot reach {@code end} (the polyline has a gap from a failed segment routing), leaves {@code edgeLevels} unchanged — per-segment pruning already cleaned those
+	 * segments individually.
 	 */
 	private static void simplifyToPath(Map<Edge, Integer> edgeLevels, Corner start, Corner end)
 	{
@@ -931,8 +935,8 @@ public class SubMapCreator
 	}
 
 	/**
-	 * Like {@link #riToNewCorner}, but searches for the closest border corner ({@code isBorder == true}) instead of the closest corner overall. Used when a river exits the selection boundary
-	 * so that the river reliably reaches the sub-map edge rather than stopping at an interior corner that happens to be nearest to the boundary intersection point.
+	 * Like {@link #riToNewCorner}, but searches for the closest border corner ({@code isBorder == true}) instead of the closest corner overall. Used when a river exits the selection boundary so that
+	 * the river reliably reaches the sub-map edge rather than stopping at an interior corner that happens to be nearest to the boundary intersection point.
 	 */
 	private static Corner riToNewBorderCorner(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph)
 	{
@@ -943,8 +947,8 @@ public class SubMapCreator
 	}
 
 	/**
-	 * BFS outward from {@code from} in the new graph's corner adjacency graph, searching up to {@code maxHops} hops for a corner adjacent to water. Returns the first water-adjacent corner found,
-	 * or {@code null} if none is reachable within the hop limit.
+	 * BFS outward from {@code from} in the new graph's corner adjacency graph, searching up to {@code maxHops} hops for a corner adjacent to water. Returns the first water-adjacent corner found, or
+	 * {@code null} if none is reachable within the hop limit.
 	 */
 	private static Corner findNearbyWaterCorner(Corner from, MapEdits newEdits, int maxHops)
 	{
@@ -1012,8 +1016,8 @@ public class SubMapCreator
 	}
 
 	/**
-	 * Like {@link #riToNewCorner}, but if the closest corner is not adjacent to water, searches all new-graph corners for the closest one that is adjacent to water (according to newEdits).
-	 * Falls back to the plain closest corner if no water-adjacent corner exists.
+	 * Like {@link #riToNewCorner}, but if the closest corner is not adjacent to water, searches all new-graph corners for the closest one that is adjacent to water (according to newEdits). Falls back
+	 * to the plain closest corner if no water-adjacent corner exists.
 	 */
 	private static Corner riToNewCornerAdjacentToWater(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph, MapEdits newEdits)
 	{
@@ -1170,8 +1174,8 @@ public class SubMapCreator
 	}
 
 	/**
-	 * When both endpoints of segment P1→P2 are outside {@code rect}, finds the two boundary intersection points (ordered from P1 to P2) if the segment passes through the rectangle. Returns empty
-	 * if there are fewer than two distinct intersections.
+	 * When both endpoints of segment P1→P2 are outside {@code rect}, finds the two boundary intersection points (ordered from P1 to P2) if the segment passes through the rectangle. Returns empty if
+	 * there are fewer than two distinct intersections.
 	 */
 	private static Optional<Tuple2<Point, Point>> segmentThroughIntersections(Point p1, Point p2, Rectangle rect)
 	{
