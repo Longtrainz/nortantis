@@ -59,7 +59,6 @@ public class SubMapDialog
 	private MapUpdater previewUpdater;
 	private MapEditingPanel previewPanel;
 	private JPanel previewContainer;
-	private JScrollPane previewScroll;
 	private volatile MapSettings lastSubMapSettings;
 	private SliderWithDisplayedValue detailSliderWithValue;
 	private JButton createButton;
@@ -566,11 +565,10 @@ public class SubMapDialog
 				.createPlaceholderImage(new String[] { "Drawing sub-map preview..." }, AwtBridge.fromAwtColor(SwingHelper.getTextColorForPlaceholderImages())));
 		previewPanel = new MapEditingPanel(placeholder);
 
-		previewContainer = new JPanel(new GridBagLayout());
-		previewContainer.add(previewPanel, new GridBagConstraints());
+		previewContainer = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		previewContainer.add(previewPanel);
 
-		previewScroll = new JScrollPane(previewContainer);
-		previewWrapper.add(previewScroll, BorderLayout.CENTER);
+		previewWrapper.add(previewContainer, BorderLayout.CENTER);
 
 		mainPanel.add(previewWrapper, BorderLayout.CENTER);
 
@@ -767,14 +765,29 @@ public class SubMapDialog
 		{
 			return;
 		}
-		nortantis.geom.Dimension size = getPreviewContainerSize();
-		if (size == null)
+		// Defer to the next EDT cycle, then force a second validate() pass. HTML labels have a
+		// two-pass layout problem: their preferred height depends on their width, which is only
+		// known after the first layout pass. Callers (radio button listeners) already call
+		// validate() once before reaching here; the second pass here settles the correct height.
+		SwingUtilities.invokeLater(() ->
 		{
-			return;
-		}
-		previewUpdater.setMaxMapSize(size);
-		enableOrDisableProgressBar(true);
-		previewUpdater.createAndShowMapFull();
+			if (previewUpdater == null)
+			{
+				return;
+			}
+			if (step2Dialog != null)
+			{
+				step2Dialog.validate();
+			}
+			nortantis.geom.Dimension size = getPreviewContainerSize();
+			if (size == null)
+			{
+				return;
+			}
+			previewUpdater.setMaxMapSize(size);
+			enableOrDisableProgressBar(true);
+			previewUpdater.createAndShowMapFull();
+		});
 	}
 
 	private void enableOrDisableProgressBar(boolean enable)
@@ -796,18 +809,12 @@ public class SubMapDialog
 
 	private nortantis.geom.Dimension getPreviewContainerSize()
 	{
-		// Always use the viewport size as the primary measure. The container's current size reflects the
-		// previous image and can be stale — e.g. if the dialog was resized smaller after the last draw,
-		// previewContainer is still sized to the old (larger) image, so using it would produce an
-		// oversized new image and cause a scrollbar that New Seed cannot clear.
-		// Fall back to the container only when the viewport has not been laid out yet (size is zero).
-		int width = previewScroll != null ? previewScroll.getViewport().getWidth() : 0;
-		int height = previewScroll != null ? previewScroll.getViewport().getHeight() : 0;
-		if ((width <= 0 || height <= 0) && previewContainer != null)
+		if (previewContainer == null)
 		{
-			width = previewContainer.getWidth();
-			height = previewContainer.getHeight();
+			return null;
 		}
+		int width = previewContainer.getWidth();
+		int height = previewContainer.getHeight();
 		if (width <= 0 || height <= 0)
 		{
 			return null;
