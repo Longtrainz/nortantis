@@ -48,7 +48,7 @@ public class SubMapCreatorTest
 	@Test
 	public void subMapRiversFormConfluence() throws Exception
 	{
-		String originalSettingsPath = Paths.get("unit test files", "map settings", "riverConfluence.nort").toString();
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort.nort").toString();
 		MapSettings originalSettings = new MapSettings(originalSettingsPath);
 		originalSettings.resolution = 0.5;
 
@@ -114,7 +114,7 @@ public class SubMapCreatorTest
 	@Test
 	public void subMapRiversHaveNoFingers() throws Exception
 	{
-		String originalSettingsPath = Paths.get("unit test files", "map settings", "riverConfluence.nort").toString();
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort").toString();
 		MapSettings originalSettings = new MapSettings(originalSettingsPath);
 		originalSettings.resolution = 0.5;
 
@@ -197,7 +197,7 @@ public class SubMapCreatorTest
 	@Test
 	public void subMapRiversHaveNoLoops() throws Exception
 	{
-		String originalSettingsPath = Paths.get("unit test files", "map settings", "riverConfluence.nort").toString();
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort").toString();
 		MapSettings originalSettings = new MapSettings(originalSettingsPath);
 		originalSettings.resolution = 0.5;
 
