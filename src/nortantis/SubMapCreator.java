@@ -612,8 +612,8 @@ public class SubMapCreator
 
 	/**
 	 * Transfers each edge of an ordered river polyline to the sub-map. Delegates endpoint computation to {@link #computeRiverSegments}, then routes each segment via {@link WorldGraph#findPathGreedy}
-	 * with per-segment finger pruning. A final {@link #simplifyToPath} pass removes cross-segment loops; if the polyline has a gap from a failed routing it falls back to a no-op so disconnected
-	 * segments survive.
+	 * with per-segment finger pruning. A final {@link #simplifyToPath} pass removes cross-segment loops and branches; if the polyline has a gap from a failed routing it falls back to per-component
+	 * simplification so that each disconnected piece is also cleaned up.
 	 */
 	private static void transferPolylineToSubMap(List<Corner> polylineCorners, List<Edge> polylineEdges, double riverLevelScale, Rectangle selectionBoundsRI, WorldGraph newGraph,
 			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
@@ -669,8 +669,8 @@ public class SubMapCreator
 
 		// Replace the final per-polyline finger prune with a path-simplification that also eliminates
 		// loops introduced when consecutive segment paths partially overlap in the new graph.
-		// Falls back to a no-op when the polyline has a gap (disconnected segments from a failed
-		// routing), preserving all routed edges since per-segment pruning already cleaned those up.
+		// Falls back to per-component simplification when the polyline has a gap (disconnected
+		// segments from a failed routing), cleaning up branches and cycles within each piece.
 		simplifyToPath(polylineEdgeLevels, firstCorner, lastCorner);
 
 		boolean lastEdgeWasStopAfter = !segments.isEmpty() && segments.get(segments.size() - 1).stopAfter();
@@ -686,12 +686,21 @@ public class SubMapCreator
 			if (isSourceCornerAdjacentToWater(sourceTerminal, originalEdits) && !isNewCornerAdjacentToWater(lastCorner, newEdits))
 			{
 				Corner nearbyWater = findNearbyWaterCorner(lastCorner, newEdits, 5);
-				if (nearbyWater != null)
+				Set<Corner> pathCorners = getEdgeCorners(polylineEdgeLevels);
+				// Skip the extension if nearbyWater is already a corner in the path: connecting
+				// lastCorner back to an interior corner would close a cycle (lollipop structure).
+				if (nearbyWater != null && !pathCorners.contains(nearbyWater))
 				{
 					int extensionLevel = polylineEdgeLevels.values().stream().mapToInt(Integer::intValue).max().getAsInt();
 					// New-graph edges → river level for the short extension path to water.
 					Map<Edge, Integer> extensionEdges = new HashMap<>();
-					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
+					// Avoid edges already in the simplified path, and also avoid routing through
+					// interior path corners (other than the start), to prevent creating branches.
+					Predicate<Edge> avoidAlreadyRouted = e -> polylineEdgeLevels.containsKey(e);
+					final Corner extensionStart = lastCorner;
+					Predicate<Corner> avoidPathInterior = c -> pathCorners.contains(c) && !c.equals(extensionStart);
+					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges,
+							c -> avoidCoastAndOcean.test(c) || avoidPathInterior.test(c), avoidAlreadyRouted);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 				}
 			}
@@ -708,7 +717,10 @@ public class SubMapCreator
 			if (selectionBoundsRI.contains(sourceStartRI) && isSourceCornerAdjacentToWater(sourceStart, originalEdits) && !isNewCornerAdjacentToWater(firstCorner, newEdits))
 			{
 				Corner nearbyWater = findNearbyWaterCorner(firstCorner, newEdits, 5);
-				if (nearbyWater != null)
+				Set<Corner> pathCorners = getEdgeCorners(polylineEdgeLevels);
+				// Skip the extension if nearbyWater is already a corner in the path: routing
+				// nearbyWater back to firstCorner would close a cycle (lollipop structure).
+				if (nearbyWater != null && !pathCorners.contains(nearbyWater))
 				{
 					// Find the closest edge to determine the river level because that's the one we'll probably attach the new segment to.
 					Optional<Edge> closest = polylineEdgeLevels.keySet().stream().filter(edge -> edge.v0 != null && edge.v1 != null)
@@ -718,7 +730,13 @@ public class SubMapCreator
 						int extensionLevel = polylineEdgeLevels.get(closest.get());
 						// New-graph edges → river level for the short extension path to water.
 						Map<Edge, Integer> extensionEdges = new HashMap<>();
-						collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges, avoidCoastAndOcean);
+						// Avoid edges already in the simplified path, and also avoid routing through
+						// interior path corners (other than the destination), to prevent creating branches.
+						Predicate<Edge> avoidAlreadyRouted = e -> polylineEdgeLevels.containsKey(e);
+						final Corner extensionEnd = firstCorner;
+						Predicate<Corner> avoidPathInterior = c -> pathCorners.contains(c) && !c.equals(extensionEnd);
+						collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges,
+								c -> avoidCoastAndOcean.test(c) || avoidPathInterior.test(c), avoidAlreadyRouted);
 						extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 					}
 				}
@@ -860,6 +878,22 @@ public class SubMapCreator
 	}
 
 	/**
+	 * Returns the set of all non-null corners that appear as endpoints of edges in {@code edgeLevels}.
+	 */
+	private static Set<Corner> getEdgeCorners(Map<Edge, Integer> edgeLevels)
+	{
+		Set<Corner> corners = new HashSet<>();
+		for (Edge e : edgeLevels.keySet())
+		{
+			if (e.v0 != null)
+				corners.add(e.v0);
+			if (e.v1 != null)
+				corners.add(e.v1);
+		}
+		return corners;
+	}
+
+	/**
 	 * Iteratively removes edges whose one endpoint has degree 1 in edgeLevels and is not startCorner or endCorner. This prunes finger branches without touching valid river endpoints or loops.
 	 */
 	private static void pruneFingers(Map<Edge, Integer> edgeLevels, Corner startCorner, Corner endCorner)
@@ -900,9 +934,9 @@ public class SubMapCreator
 
 
 	/**
-	 * Reduces {@code edgeLevels} to a simple path from {@code start} to {@code end} by BFS within the edgeLevels subgraph, discarding any loops or dangling branches that {@link #pruneFingers} cannot
-	 * detect. If {@code start} cannot reach {@code end} (the polyline has a gap from a failed segment routing), leaves {@code edgeLevels} unchanged — per-segment pruning already cleaned those
-	 * segments individually.
+	 * Reduces {@code edgeLevels} to a simple path from {@code start} to {@code end} by BFS within the edgeLevels subgraph, discarding any loops or dangling branches that {@link #pruneFingers}
+	 * cannot detect. If {@code start} cannot reach {@code end} (the polyline has a gap from a failed segment routing), falls back to {@link #simplifyEachComponent} to clean up each connected
+	 * component independently.
 	 */
 	private static void simplifyToPath(Map<Edge, Integer> edgeLevels, Corner start, Corner end)
 	{
@@ -935,7 +969,10 @@ public class SubMapCreator
 
 		if (!parentEdge.containsKey(end))
 		{
-			// start cannot reach end — the polyline has a gap; leave edgeLevels as-is.
+			// start cannot reach end — the polyline has a gap from failed segment routing.
+			// Simplify each connected component independently so that overlapping segment paths
+			// that created branches or cycles within each piece are cleaned up.
+			simplifyEachComponent(edgeLevels);
 			return;
 		}
 
@@ -951,6 +988,113 @@ public class SubMapCreator
 			current = edgeOtherCorner(e, current);
 		}
 		edgeLevels.keySet().retainAll(pathEdges);
+	}
+
+	/**
+	 * Finds each connected component in {@code edgeLevels} and reduces it to a simple path. The two endpoints of each component's path are determined by finding a degree-1 corner and then using BFS
+	 * to locate the farthest reachable corner in the same component. Components with no degree-1 corners (pure cycles) are discarded entirely, since rivers should not form cycles.
+	 */
+	private static void simplifyEachComponent(Map<Edge, Integer> edgeLevels)
+	{
+		// Build degree map to identify degree-1 endpoints.
+		Map<Corner, Integer> degree = new HashMap<>();
+		for (Edge e : edgeLevels.keySet())
+		{
+			if (e.v0 != null)
+				degree.merge(e.v0, 1, Integer::sum);
+			if (e.v1 != null)
+				degree.merge(e.v1, 1, Integer::sum);
+		}
+
+		Set<Corner> globalVisited = new HashSet<>();
+		Set<Edge> keptEdges = new HashSet<>();
+
+		for (Corner seed : getEdgeCorners(edgeLevels))
+		{
+			if (globalVisited.contains(seed))
+				continue;
+
+			// BFS to collect all corners in this connected component.
+			Set<Corner> component = new HashSet<>();
+			Queue<Corner> bfsQueue = new LinkedList<>();
+			bfsQueue.add(seed);
+			component.add(seed);
+			while (!bfsQueue.isEmpty())
+			{
+				Corner current = bfsQueue.poll();
+				for (Edge e : current.protrudes)
+				{
+					if (!edgeLevels.containsKey(e))
+						continue;
+					Corner neighbor = edgeOtherCorner(e, current);
+					if (neighbor != null && !component.contains(neighbor))
+					{
+						component.add(neighbor);
+						bfsQueue.add(neighbor);
+					}
+				}
+			}
+			globalVisited.addAll(component);
+
+			// Find a degree-1 corner to use as one endpoint of the path.
+			Corner endA = null;
+			for (Corner c : component)
+			{
+				if (degree.getOrDefault(c, 0) == 1)
+				{
+					endA = c;
+					break;
+				}
+			}
+			if (endA == null)
+			{
+				// Pure cycle: no degree-1 corner; discard the entire component.
+				continue;
+			}
+
+			// BFS from endA within the component to find the farthest corner (endB).
+			// For a tree this is the other end of the longest path (diameter).
+			Corner endB = endA;
+			Set<Corner> bfsVisited = new HashSet<>();
+			Queue<Corner> diamQ = new LinkedList<>();
+			bfsVisited.add(endA);
+			diamQ.add(endA);
+			while (!diamQ.isEmpty())
+			{
+				Corner current = diamQ.poll();
+				endB = current;
+				for (Edge e : current.protrudes)
+				{
+					if (!edgeLevels.containsKey(e))
+						continue;
+					if (!component.contains(e.v0 != null ? e.v0 : e.v1))
+						continue;
+					Corner neighbor = edgeOtherCorner(e, current);
+					if (neighbor != null && !bfsVisited.contains(neighbor))
+					{
+						bfsVisited.add(neighbor);
+						diamQ.add(neighbor);
+					}
+				}
+			}
+
+			if (endB.equals(endA))
+				continue;
+
+			// Build the edge subset for this component, then simplify it to a simple path.
+			Map<Edge, Integer> componentEdges = new HashMap<>();
+			for (Map.Entry<Edge, Integer> entry : edgeLevels.entrySet())
+			{
+				Corner v0 = entry.getKey().v0, v1 = entry.getKey().v1;
+				if ((v0 != null && component.contains(v0)) || (v1 != null && component.contains(v1)))
+					componentEdges.put(entry.getKey(), entry.getValue());
+			}
+
+			simplifyToPath(componentEdges, endA, endB);
+			keptEdges.addAll(componentEdges.keySet());
+		}
+
+		edgeLevels.keySet().retainAll(keptEdges);
 	}
 
 	/**

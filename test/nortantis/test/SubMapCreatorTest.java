@@ -157,13 +157,35 @@ public class SubMapCreatorTest
 		{
 			if (entry.getValue() > 2)
 			{
+				int badCornerIndex = entry.getKey().index;
 				File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
 				failedMapsDir.mkdirs();
 				String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversHaveNoFingers.png").toString();
 				Image map = new MapCreator().createMap(subMapSettings, null, null);
 				ImageHelper.getInstance().write(map, failedMapPath);
-				fail("River has a finger: corner " + entry.getKey().index + " has degree " + entry.getValue()
-						+ ".\nFailed map written to: " + failedMapPath);
+				// Find which rivers contain the bad corner.
+				StringBuilder riverInfo = new StringBuilder();
+				for (int ri = 0; ri < rivers.size(); ri++)
+				{
+					River river = rivers.get(ri);
+					Set<Corner> corners = river.getCorners();
+					boolean hasBadCorner = corners.stream().anyMatch(c -> c.index == badCornerIndex);
+					if (hasBadCorner)
+					{
+						riverInfo.append("\n  River ").append(ri).append(" (").append(river.getEdges().size()).append(" edges, ").append(corners.size()).append(" corners): ");
+						StringBuilder cornerSeq = new StringBuilder();
+						for (Corner c : river.getOrderedCorners())
+						{
+							if (cornerSeq.length() > 0)
+								cornerSeq.append(" -> ");
+							cornerSeq.append(c.index);
+						}
+						riverInfo.append(cornerSeq);
+					}
+				}
+				fail("River has a finger: corner " + badCornerIndex + " has degree " + entry.getValue()
+						+ ".\nRivers containing corner " + badCornerIndex + ":" + riverInfo
+						+ "\nFailed map written to: " + failedMapPath);
 			}
 		}
 	}
@@ -205,9 +227,18 @@ public class SubMapCreatorTest
 				String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversHaveNoLoops.png").toString();
 				Image map = new MapCreator().createMap(subMapSettings, null, null);
 				ImageHelper.getInstance().write(map, failedMapPath);
-				fail("River has a loop: " + edgeCount + " edges but only " + cornerCount + " corners.\nFailed map written to: "
-						+ failedMapPath);
+				// Build ordered corner sequence for the failing river.
+				StringBuilder cornerSeq = new StringBuilder();
+				for (Corner c : river.getOrderedCorners())
+				{
+					if (cornerSeq.length() > 0)
+						cornerSeq.append(" -> ");
+					cornerSeq.append(c.index);
+				}
+				fail("River has a loop: " + edgeCount + " edges but only " + cornerCount + " corners.\nCorner sequence: " + cornerSeq
+						+ "\nFailed map written to: " + failedMapPath);
 			}
 		}
 	}
+
 }
