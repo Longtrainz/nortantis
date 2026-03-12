@@ -104,8 +104,12 @@ public class SubMapCreatorTest
 	}
 
 	/**
-	 * Verifies that rivers in a sub-map contain no finger branches — degree-1 interior corners that are not river endpoints. The original map has no fingers, so the sub-map should not introduce
-	 * any.
+	 * Verifies that rivers in a sub-map contain no finger branches. A finger is a branch point — a corner with degree &gt; 2 in the combined river edge graph — that was not present in the original
+	 * map. The original map for this test case has no such branches.
+	 * <p>
+	 * Note: {@link WorldGraph#findRivers()} separates branch arms into distinct {@link River} objects, so checking degree within a single river's edges would never detect fingers. Instead this test
+	 * builds the degree map from the unique set of all edges across all rivers.
+	 * </p>
 	 */
 	@Test
 	public void subMapRiversHaveNoFingers() throws Exception
@@ -129,41 +133,39 @@ public class SubMapCreatorTest
 
 		List<River> rivers = newGraph.findRivers();
 
+		// Collect unique river edges across all rivers. findRivers() may place the same edge in two
+		// different River objects when following diverging paths, so deduplication is needed to get
+		// accurate corner degrees.
+		Set<Edge> allRiverEdges = new HashSet<>();
 		for (River river : rivers)
 		{
-			// Build a degree map: count how many edges in this river touch each corner.
-			Map<Corner, Integer> cornerDegree = new HashMap<>();
-			for (Edge e : river.getEdges())
-			{
-				if (e.v0 != null)
-					cornerDegree.merge(e.v0, 1, Integer::sum);
-				if (e.v1 != null)
-					cornerDegree.merge(e.v1, 1, Integer::sum);
-			}
-
-			// The start and end corners are valid degree-1 endpoints; any other degree-1 corner is a finger.
-			List<Corner> orderedCorners = river.getOrderedCorners();
-			Set<Corner> endpoints = new HashSet<>();
-			if (!orderedCorners.isEmpty())
-			{
-				endpoints.add(orderedCorners.get(0));
-				endpoints.add(orderedCorners.get(orderedCorners.size() - 1));
-			}
-
-			for (Map.Entry<Corner, Integer> entry : cornerDegree.entrySet())
-			{
-				if (entry.getValue() == 1 && !endpoints.contains(entry.getKey()))
-				{
-					File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
-					failedMapsDir.mkdirs();
-					String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversHaveNoFingers.png").toString();
-					Image map = new MapCreator().createMap(subMapSettings, null, null);
-					ImageHelper.getInstance().write(map, failedMapPath);
-					fail("River has a finger at corner " + entry.getKey().index + ".\nFailed map written to: " + failedMapPath);
-				}
-			}
+			allRiverEdges.addAll(river.getEdges());
 		}
 
+		// Build degree map from the deduplicated edge set.
+		Map<Corner, Integer> cornerDegree = new HashMap<>();
+		for (Edge e : allRiverEdges)
+		{
+			if (e.v0 != null)
+				cornerDegree.merge(e.v0, 1, Integer::sum);
+			if (e.v1 != null)
+				cornerDegree.merge(e.v1, 1, Integer::sum);
+		}
+
+		// Any corner with degree > 2 is a branch point, indicating a finger was introduced.
+		for (Map.Entry<Corner, Integer> entry : cornerDegree.entrySet())
+		{
+			if (entry.getValue() > 2)
+			{
+				File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
+				failedMapsDir.mkdirs();
+				String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversHaveNoFingers.png").toString();
+				Image map = new MapCreator().createMap(subMapSettings, null, null);
+				ImageHelper.getInstance().write(map, failedMapPath);
+				fail("River has a finger: corner " + entry.getKey().index + " has degree " + entry.getValue()
+						+ ".\nFailed map written to: " + failedMapPath);
+			}
+		}
 	}
 
 	/**
