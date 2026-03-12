@@ -15,20 +15,27 @@ import nortantis.WorldGraph;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.io.FileUtils;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class SubMapCreatorTest
 {
+	static final String failedMapsFolderName = "failed sub-maps";
+
 	@BeforeAll
-	public static void setUpBeforeClass()
+	public static void setUpBeforeClass() throws IOException
 	{
 		PlatformFactory.setInstance(new AwtFactory());
 		nortantis.swing.translation.Translation.initialize();
+		FileUtils.deleteDirectory(new File(Paths.get("unit test files", failedMapsFolderName).toString()));
 	}
 
 	/**
@@ -83,12 +90,13 @@ public class SubMapCreatorTest
 		if (!confluenceFound)
 		{
 			// Render and save the sub-map for visual inspection.
-			java.io.File failedMapsDir = Paths.get("unit test files", "failed maps").toFile();
+			File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
 			failedMapsDir.mkdirs();
-			String failedMapPath = Paths.get("unit test files", "failed maps", "subMapRiversFormConfluence.png").toString();
+			String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversFormConfluence.png").toString();
 			Image map = new MapCreator().createMap(subMapSettings, null, null);
 			ImageHelper.getInstance().write(map, failedMapPath);
-			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: " + failedMapPath);
+			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: "
+					+ failedMapPath);
 		}
 	}
 }
