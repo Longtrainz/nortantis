@@ -671,7 +671,22 @@ public class SubMapCreator
 				}
 			}
 
-			collectGreedyPathEdges(routeStart, routeEnd, segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean, avoidIncomingEdge);
+			// When routing to or from a water corner, coast corners must be allowed as intermediate
+		// nodes (the path land → coast → ocean requires traversing through coast). The destination
+		// is always reachable per findPathGreedy, but intermediate corners still obey the
+		// predicate. So we only avoid ocean/water corners that are not the route endpoints.
+		Predicate<Corner> avoidForSegment;
+		if (routeEnd.isWater || routeStart.isWater)
+		{
+			final Corner finalRouteStart = routeStart;
+			final Corner finalRouteEnd = routeEnd;
+			avoidForSegment = c -> (c.isOcean || c.isWater) && !c.equals(finalRouteStart) && !c.equals(finalRouteEnd);
+		}
+		else
+		{
+			avoidForSegment = avoidCoastAndOcean;
+		}
+		collectGreedyPathEdges(routeStart, routeEnd, segment.level(), newGraph, segmentEdgeLevels, avoidForSegment, avoidIncomingEdge);
 			pruneFingers(segmentEdgeLevels, routeStart, routeEnd);
 
 			if (segment.loopClosing())
@@ -726,7 +741,7 @@ public class SubMapCreator
 					final Corner extensionStart = lastCorner;
 					Predicate<Corner> avoidPathInterior = c -> pathCorners.contains(c) && !c.equals(extensionStart);
 					collectGreedyPathEdges(lastCorner, nearbyWater, extensionLevel, newGraph, extensionEdges,
-							c -> avoidCoastAndOcean.test(c) || avoidPathInterior.test(c), avoidAlreadyRouted);
+							avoidPathInterior, avoidAlreadyRouted);
 					extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 				}
 			}
@@ -762,7 +777,7 @@ public class SubMapCreator
 						final Corner extensionEnd = firstCorner;
 						Predicate<Corner> avoidPathInterior = c -> pathCorners.contains(c) && !c.equals(extensionEnd);
 						collectGreedyPathEdges(nearbyWater, firstCorner, extensionLevel, newGraph, extensionEdges,
-								c -> avoidCoastAndOcean.test(c) || avoidPathInterior.test(c), avoidAlreadyRouted);
+								avoidPathInterior, avoidAlreadyRouted);
 						extensionEdges.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 					}
 				}
@@ -881,14 +896,18 @@ public class SubMapCreator
 			// A waypoint that unintentionally lands on a water-adjacent corner is invalid: the
 			// greedy search avoids coast/ocean/water corners and cannot route to or from such a
 			// corner, so the segment would contribute nothing. Discard it so the routing chain
-			// flows through without this broken waypoint.
-			if (c0 != null && !c0WaterAdjacentIntentional && isNewCornerAdjacentToWater(c0, newEdits))
+			// flows through without this broken waypoint. However, if the corresponding source
+			// corner was itself adjacent to water, the new-graph corner landing near water is
+			// expected (river approaching the ocean), so keep the segment in that case.
+			if (c0 != null && !c0WaterAdjacentIntentional && isNewCornerAdjacentToWater(c0, newEdits)
+					&& !isSourceCornerAdjacentToWater(sourceV0, originalEdits))
 			{
 				if (stopAfter)
 					break;
 				continue;
 			}
-			if (c1 != null && !c1WaterAdjacentIntentional && isNewCornerAdjacentToWater(c1, newEdits))
+			if (c1 != null && !c1WaterAdjacentIntentional && isNewCornerAdjacentToWater(c1, newEdits)
+					&& !isSourceCornerAdjacentToWater(sourceV1, originalEdits))
 			{
 				if (stopAfter)
 					break;
@@ -1091,10 +1110,11 @@ public class SubMapCreator
 						continue;
 					}
 					visited.add(neighbor);
-					if (isNewCornerAdjacentToWater(neighbor, newEdits))
+					if (neighbor.isWater)
 					{
 						return neighbor;
 					}
+					// Continue BFS through coast corners so we can reach ocean corners one hop beyond.
 					queue.add(neighbor);
 				}
 			}
@@ -1137,20 +1157,26 @@ public class SubMapCreator
 	}
 
 	/**
-	 * Like {@link #riToNewCorner}, but if the closest corner is not adjacent to water, searches all new-graph corners for the closest one that is adjacent to water (according to newEdits). Falls back
-	 * to the plain closest corner if no water-adjacent corner exists.
+	 * Like {@link #riToNewCorner}, but finds the closest corner that is fully inside water ({@code c.isWater}, which includes ocean and lake corners but excludes coast corners). Prefers such corners
+	 * so that the resulting river edges satisfy {@link nortantis.graph.voronoi.Edge#isRiverTouchingOcean()}, which requires {@code v.isOcean} on a corner endpoint. Falls back to a water-adjacent
+	 * (coast) corner if no fully-water corner exists, and finally to the plain closest corner.
 	 */
 	private static Corner riToNewCornerAdjacentToWater(Point riPoint, Rectangle selectionBoundsRI, WorldGraph newGraph, MapEdits newEdits)
 	{
 		Corner closest = riToNewCorner(riPoint, selectionBoundsRI, newGraph);
-		if (closest == null || isNewCornerAdjacentToWater(closest, newEdits))
+		if (closest == null || closest.isWater)
 		{
 			return closest;
 		}
 		Point newGraphPoint = riToNewGraphPoint(riPoint, selectionBoundsRI, newGraph);
-		Corner waterCorner = findClosestCornerMatching(newGraph.corners, newGraphPoint, c -> isNewCornerAdjacentToWater(c, newEdits));
-		// Fall back to the plain closest corner if no water-adjacent corner exists.
-		return waterCorner != null ? waterCorner : closest;
+		Corner waterCorner = findClosestCornerMatching(newGraph.corners, newGraphPoint, c -> c.isWater);
+		if (waterCorner != null)
+		{
+			return waterCorner;
+		}
+		// Fall back to a water-adjacent corner (coast) if no fully-water corner exists.
+		Corner coastCorner = findClosestCornerMatching(newGraph.corners, newGraphPoint, c -> isNewCornerAdjacentToWater(c, newEdits));
+		return coastCorner != null ? coastCorner : closest;
 	}
 
 	/**
