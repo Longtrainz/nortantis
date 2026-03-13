@@ -4,6 +4,7 @@ import nortantis.MapSettings.GridOverlayLayer;
 import nortantis.editor.*;
 import nortantis.geom.*;
 import nortantis.graph.voronoi.Center;
+import nortantis.graph.voronoi.Corner;
 import nortantis.graph.voronoi.Edge;
 import nortantis.graph.voronoi.EdgeDrawType;
 import nortantis.platform.*;
@@ -832,6 +833,21 @@ public class MapCreator implements WarningLogger
 
 					p.setColor(Color.cyan);
 					graph.drawEdge(p, e);
+				}
+			}
+		}
+
+		if (DebugFlags.getIndexesOfCornersToHighlight().length > 0)
+		{
+			try (Painter p = map.createPainter())
+			{
+				p.setColor(Color.red);
+				p.setBasicStroke((float) settings.resolution);
+				final int diameter = (int) (12.0 * settings.resolution);
+				for (Integer index : DebugFlags.getIndexesOfCornersToHighlight())
+				{
+					Corner c = graph.corners.get(index);
+					p.drawOval((int) (c.loc.x) - diameter / 2, (int) (c.loc.y) - diameter / 2, diameter, diameter);
 				}
 			}
 		}

@@ -34,6 +34,8 @@ public class DebugFlags
 
 	private static int[] indexesOfEdgesToHighlight = new int[] {};
 
+	private static int[] indexesOfCornersToHighlight = new int[] {358, 351};
+
 	private static boolean drawRegionBoundaryPathJoins = false;
 
 	private static boolean drawCorners = false;
@@ -78,6 +80,15 @@ public class DebugFlags
 			return new int[] {};
 		}
 		return indexesOfEdgesToHighlight;
+	}
+
+	public static int[] getIndexesOfCornersToHighlight()
+	{
+		if (Assets.isRunningFromJar())
+		{
+			return new int[] {};
+		}
+		return indexesOfCornersToHighlight;
 	}
 
 	public static boolean shouldWriteBeforeAndAfterJsonWhenSavePromptShows()
