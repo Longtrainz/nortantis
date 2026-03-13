@@ -769,6 +769,7 @@ public class SubMapCreator
 			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
 	{
 		List<RiverSegment> segments = new ArrayList<>();
+		Set<Corner> cornersInSegments = new HashSet<>();
 		for (int i = 0; i < polylineEdges.size(); i++)
 		{
 			int edgeLevel = polylineEdges.get(i).river;
@@ -791,8 +792,12 @@ public class SubMapCreator
 				{
 					Corner c0 = riToNewCorner(through.get().getFirst(), selectionBoundsRI, newGraph);
 					Corner c1 = riToNewCorner(through.get().getSecond(), selectionBoundsRI, newGraph);
-					if (c0 != null && c1 != null && !c0.equals(c1))
+					if (c0 != null && c1 != null && !c0.equals(c1) && !cornersInSegments.contains(c0) && !cornersInSegments.contains(c1))
+					{
 						segments.add(new RiverSegment(c0, c1, scaledLevel, false));
+						cornersInSegments.add(c0);
+						cornersInSegments.add(c1);
+					}
 				}
 				continue;
 			}
@@ -851,8 +856,12 @@ public class SubMapCreator
 				c1 = riToNewCorner(effectiveV1, selectionBoundsRI, newGraph);
 			}
 
-			if (c0 != null && c1 != null && !c0.equals(c1))
+			if (c0 != null && c1 != null && !c0.equals(c1) && !cornersInSegments.contains(c0) && !cornersInSegments.contains(c1))
+			{
 				segments.add(new RiverSegment(c0, c1, scaledLevel, stopAfter));
+				cornersInSegments.add(c0);
+				cornersInSegments.add(c1);
+			}
 
 			if (stopAfter)
 				break;
