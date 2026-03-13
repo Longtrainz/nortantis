@@ -783,7 +783,10 @@ public class SubMapCreator
 			MapEdits originalEdits, MapEdits newEdits, double originalResolution)
 	{
 		List<RiverSegment> segments = new ArrayList<>();
-		Set<Corner> cornersInSegments = new HashSet<>();
+		// Tracks source corner indexes (not new-graph corners) of each segment's c0 so that loop
+		// detection uses source identity. Two distinct source corners that happen to map to the
+		// same new-graph corner in a narrow area would otherwise cause a false positive.
+		Set<Integer> sourceC0Indexes = new HashSet<>();
 		for (int i = 0; i < polylineEdges.size(); i++)
 		{
 			int edgeLevel = polylineEdges.get(i).river;
@@ -809,9 +812,9 @@ public class SubMapCreator
 					if (c0 != null && c1 != null && !c0.equals(c1)
 						&& !isNewCornerAdjacentToWater(c0, newEdits) && !isNewCornerAdjacentToWater(c1, newEdits))
 					{
-						boolean loopDetected = cornersInSegments.contains(c1);
+						boolean loopDetected = sourceC0Indexes.contains(sourceV1.index);
 						segments.add(new RiverSegment(c0, c1, scaledLevel, false, loopDetected));
-						cornersInSegments.add(c0);
+						sourceC0Indexes.add(sourceV0.index);
 						if (loopDetected)
 							break;
 					}
@@ -894,9 +897,9 @@ public class SubMapCreator
 
 			if (c0 != null && c1 != null && !c0.equals(c1))
 			{
-				boolean loopDetected = cornersInSegments.contains(c1);
+				boolean loopDetected = sourceC0Indexes.contains(sourceV1.index);
 				segments.add(new RiverSegment(c0, c1, scaledLevel, stopAfter, loopDetected));
-				cornersInSegments.add(c0);
+				sourceC0Indexes.add(sourceV0.index);
 				if (stopAfter || loopDetected)
 					break;
 			}

@@ -33,6 +33,12 @@ public class SubMapCreatorTest
 {
 	static final String failedMapsFolderName = "failed sub-maps";
 
+	// Set any of these to true to force that test to write its result map to the failed sub-maps folder.
+	private static final boolean forceWriteSubMapRiversFormConfluence = false;
+	private static final boolean forceWriteSubMapRiversHaveNoFingers = false;
+	private static final boolean forceWriteSubMapComplexRiversHaveNoFingersOrLoops = false;
+	private static final boolean forceWriteSubMapRiversHaveNoLoops = false;
+
 	@BeforeAll
 	public static void setUpBeforeClass() throws IOException
 	{
@@ -96,6 +102,10 @@ public class SubMapCreatorTest
 			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: "
 					+ failedMapPath);
 		}
+		else if (forceWriteSubMapRiversFormConfluence)
+		{
+			saveFailedMap(subMapSettings, "subMapRiversFormConfluence");
+		}
 	}
 
 	/**
@@ -129,6 +139,10 @@ public class SubMapCreatorTest
 		List<River> rivers = newGraph.findRivers();
 
 		assertRiversHaveNoFingers(rivers, subMapSettings, "subMapRiversHaveNoFingers");
+		if (forceWriteSubMapRiversHaveNoFingers)
+		{
+			saveFailedMap(subMapSettings, "subMapRiversHaveNoFingers");
+		}
 	}
 
 	/**
@@ -148,7 +162,7 @@ public class SubMapCreatorTest
 
 		int worldSize = SubMapDialog.computeDefaultWorldSize(originalSettings, selectionBoundsRI);
 
-		long seed = 291119026L;
+		long seed = 1735631519L;
 		MapSettings subMapSettings = SubMapCreator.createSubMapSettings(originalSettings, originalGraph, selectionBoundsRI, worldSize,
 				originalSettings.resolution, seed, true);
 
@@ -158,6 +172,10 @@ public class SubMapCreatorTest
 
 		assertRiversHaveNoLoops(rivers, subMapSettings, "subMapComplexRiversHaveNoFingersOrLoops");
 		assertRiversHaveNoFingers(rivers, subMapSettings, "subMapComplexRiversHaveNoFingersOrLoops");
+		if (forceWriteSubMapComplexRiversHaveNoFingersOrLoops)
+		{
+			saveFailedMap(subMapSettings, "subMapComplexRiversHaveNoFingersOrLoops");
+		}
 	}
 
 	/**
@@ -187,6 +205,10 @@ public class SubMapCreatorTest
 		List<River> rivers = newGraph.findRivers();
 
 		assertRiversHaveNoLoops(rivers, subMapSettings, "subMapRiversHaveNoLoops");
+		if (forceWriteSubMapRiversHaveNoLoops)
+		{
+			saveFailedMap(subMapSettings, "subMapRiversHaveNoLoops");
+		}
 	}
 
 	private String saveFailedMap(MapSettings subMapSettings, String testName) throws Exception
