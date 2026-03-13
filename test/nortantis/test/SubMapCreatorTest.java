@@ -48,7 +48,7 @@ public class SubMapCreatorTest
 	@Test
 	public void subMapRiversFormConfluence() throws Exception
 	{
-		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort.nort").toString();
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort").toString();
 		MapSettings originalSettings = new MapSettings(originalSettingsPath);
 		originalSettings.resolution = 0.5;
 
@@ -92,12 +92,7 @@ public class SubMapCreatorTest
 
 		if (!confluenceFound)
 		{
-			// Render and save the sub-map for visual inspection.
-			File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
-			failedMapsDir.mkdirs();
-			String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversFormConfluence.png").toString();
-			Image map = new MapCreator().createMap(subMapSettings, null, null);
-			ImageHelper.getInstance().write(map, failedMapPath);
+			String failedMapPath = saveFailedMap(subMapSettings, "subMapRiversFormConfluence");
 			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: "
 					+ failedMapPath);
 		}
@@ -133,61 +128,36 @@ public class SubMapCreatorTest
 
 		List<River> rivers = newGraph.findRivers();
 
-		// Collect unique river edges across all rivers. findRivers() may place the same edge in two
-		// different River objects when following diverging paths, so deduplication is needed to get
-		// accurate corner degrees.
-		Set<Edge> allRiverEdges = new HashSet<>();
-		for (River river : rivers)
-		{
-			allRiverEdges.addAll(river.getEdges());
-		}
+		assertRiversHaveNoFingers(rivers, subMapSettings, "subMapRiversHaveNoFingers");
+	}
 
-		// Build degree map from the deduplicated edge set.
-		Map<Corner, Integer> cornerDegree = new HashMap<>();
-		for (Edge e : allRiverEdges)
-		{
-			if (e.v0 != null)
-				cornerDegree.merge(e.v0, 1, Integer::sum);
-			if (e.v1 != null)
-				cornerDegree.merge(e.v1, 1, Integer::sum);
-		}
+	/**
+	 * Verifies that rivers in a sub-map contain no fingers or loops for a sub-map with a complex river network.
+	 */
+	@Test
+	public void subMapComplexRiversHaveNoFingersOrLoops() throws Exception
+	{
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort").toString();
+		MapSettings originalSettings = new MapSettings(originalSettingsPath);
+		originalSettings.resolution = 0.5;
 
-		// Any corner with degree > 2 is a branch point, indicating a finger was introduced.
-		for (Map.Entry<Corner, Integer> entry : cornerDegree.entrySet())
-		{
-			if (entry.getValue() > 2)
-			{
-				int badCornerIndex = entry.getKey().index;
-				File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
-				failedMapsDir.mkdirs();
-				String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversHaveNoFingers.png").toString();
-				Image map = new MapCreator().createMap(subMapSettings, null, null);
-				ImageHelper.getInstance().write(map, failedMapPath);
-				// Find which rivers contain the bad corner.
-				StringBuilder riverInfo = new StringBuilder();
-				for (int ri = 0; ri < rivers.size(); ri++)
-				{
-					River river = rivers.get(ri);
-					Set<Corner> corners = river.getCorners();
-					boolean hasBadCorner = corners.stream().anyMatch(c -> c.index == badCornerIndex);
-					if (hasBadCorner)
-					{
-						riverInfo.append("\n  River ").append(ri).append(" (").append(river.getEdges().size()).append(" edges, ").append(corners.size()).append(" corners): ");
-						StringBuilder cornerSeq = new StringBuilder();
-						for (Corner c : river.getOrderedCorners())
-						{
-							if (cornerSeq.length() > 0)
-								cornerSeq.append(" -> ");
-							cornerSeq.append(c.index);
-						}
-						riverInfo.append(cornerSeq);
-					}
-				}
-				fail("River has a finger: corner " + badCornerIndex + " has degree " + entry.getValue()
-						+ ".\nRivers containing corner " + badCornerIndex + ":" + riverInfo
-						+ "\nFailed map written to: " + failedMapPath);
-			}
-		}
+		WorldGraph originalGraph = MapCreator.createGraphForUnitTests(originalSettings);
+
+		// Sub-map selection bounds in RI (resolution-invariant) coordinates.
+		Rectangle selectionBoundsRI = new Rectangle(2515, 1471, 1581, 2625);
+
+		int worldSize = SubMapDialog.computeDefaultWorldSize(originalSettings, selectionBoundsRI);
+
+		long seed = 1636439113L;
+		MapSettings subMapSettings = SubMapCreator.createSubMapSettings(originalSettings, originalGraph, selectionBoundsRI, worldSize,
+				originalSettings.resolution, seed, true);
+
+		WorldGraph newGraph = MapCreator.createGraphForUnitTests(subMapSettings);
+
+		List<River> rivers = newGraph.findRivers();
+
+		assertRiversHaveNoLoops(rivers, subMapSettings, "subMapComplexRiversHaveNoFingersOrLoops");
+		assertRiversHaveNoFingers(rivers, subMapSettings, "subMapComplexRiversHaveNoFingersOrLoops");
 	}
 
 	/**
@@ -216,18 +186,27 @@ public class SubMapCreatorTest
 
 		List<River> rivers = newGraph.findRivers();
 
+		assertRiversHaveNoLoops(rivers, subMapSettings, "subMapRiversHaveNoLoops");
+	}
+
+	private String saveFailedMap(MapSettings subMapSettings, String testName) throws Exception
+	{
+		File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
+		failedMapsDir.mkdirs();
+		String failedMapPath = Paths.get("unit test files", failedMapsFolderName, testName + ".png").toString();
+		Image map = new MapCreator().createMap(subMapSettings, null, null);
+		ImageHelper.getInstance().write(map, failedMapPath);
+		return failedMapPath;
+	}
+
+	private void assertRiversHaveNoLoops(List<River> rivers, MapSettings subMapSettings, String testName) throws Exception
+	{
 		for (River river : rivers)
 		{
 			int edgeCount = river.getEdges().size();
 			int cornerCount = river.getCorners().size();
 			if (edgeCount > cornerCount - 1)
 			{
-				File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
-				failedMapsDir.mkdirs();
-				String failedMapPath = Paths.get("unit test files", failedMapsFolderName, "subMapRiversHaveNoLoops.png").toString();
-				Image map = new MapCreator().createMap(subMapSettings, null, null);
-				ImageHelper.getInstance().write(map, failedMapPath);
-				// Build ordered corner sequence for the failing river.
 				StringBuilder cornerSeq = new StringBuilder();
 				for (Corner c : river.getOrderedCorners())
 				{
@@ -235,7 +214,61 @@ public class SubMapCreatorTest
 						cornerSeq.append(" -> ");
 					cornerSeq.append(c.index);
 				}
+				String failedMapPath = saveFailedMap(subMapSettings, testName);
 				fail("River has a loop: " + edgeCount + " edges but only " + cornerCount + " corners.\nCorner sequence: " + cornerSeq
+						+ "\nFailed map written to: " + failedMapPath);
+			}
+		}
+	}
+
+	/**
+	 * Asserts that no corner in the combined river edge graph has degree &gt; 2. Such corners are branch points, indicating a finger was introduced. Note: {@link WorldGraph#findRivers()} may
+	 * place the same edge in two different {@link River} objects, so edges are deduplicated before computing degrees.
+	 */
+	private void assertRiversHaveNoFingers(List<River> rivers, MapSettings subMapSettings, String testName) throws Exception
+	{
+		Set<Edge> allRiverEdges = new HashSet<>();
+		for (River river : rivers)
+		{
+			allRiverEdges.addAll(river.getEdges());
+		}
+
+		Map<Corner, Integer> cornerDegree = new HashMap<>();
+		for (Edge e : allRiverEdges)
+		{
+			if (e.v0 != null)
+				cornerDegree.merge(e.v0, 1, Integer::sum);
+			if (e.v1 != null)
+				cornerDegree.merge(e.v1, 1, Integer::sum);
+		}
+
+		for (Map.Entry<Corner, Integer> entry : cornerDegree.entrySet())
+		{
+			if (entry.getValue() > 2)
+			{
+				int badCornerIndex = entry.getKey().index;
+				StringBuilder riverInfo = new StringBuilder();
+				for (int ri = 0; ri < rivers.size(); ri++)
+				{
+					River river = rivers.get(ri);
+					Set<Corner> corners = river.getCorners();
+					boolean hasBadCorner = corners.stream().anyMatch(c -> c.index == badCornerIndex);
+					if (hasBadCorner)
+					{
+						riverInfo.append("\n  River ").append(ri).append(" (").append(river.getEdges().size()).append(" edges, ").append(corners.size()).append(" corners): ");
+						StringBuilder cornerSeq = new StringBuilder();
+						for (Corner c : river.getOrderedCorners())
+						{
+							if (cornerSeq.length() > 0)
+								cornerSeq.append(" -> ");
+							cornerSeq.append(c.index);
+						}
+						riverInfo.append(cornerSeq);
+					}
+				}
+				String failedMapPath = saveFailedMap(subMapSettings, testName);
+				fail("River has a finger: corner " + badCornerIndex + " has degree " + entry.getValue()
+						+ ".\nRivers containing corner " + badCornerIndex + ":" + riverInfo
 						+ "\nFailed map written to: " + failedMapPath);
 			}
 		}

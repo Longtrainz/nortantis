@@ -632,18 +632,30 @@ public class SubMapCreator
 		Corner lastCorner = null;
 		for (RiverSegment segment : segments)
 		{
+			// Route from the accumulated path's last corner (not from the independently-mapped
+			// segment.c0()) so that all segment sub-paths form a continuous chain. Without this,
+			// pass-through segments — whose endpoints are mapped from boundary-intersection points
+			// rather than source corners — and similar cases can introduce gaps between consecutive
+			// sub-paths. A gap prevents simplifyToPath from finding a connected path from
+			// firstCorner to lastCorner, leaving branches and cycles uncleaned.
+			Corner routeStart = (lastCorner != null) ? lastCorner : segment.c0();
+			Corner routeEnd = segment.c1();
+
+			// Skip degenerate segments that map to the same corner after chaining.
+			if (routeStart.equals(routeEnd))
+				continue;
+
 			// New-graph edges → river level for this one source segment; merged into polylineEdgeLevels after pruning.
 			Map<Edge, Integer> segmentEdgeLevels = new HashMap<>();
 
-			// If the segment starts at the current endpoint and that endpoint is degree-1 in the
-			// accumulated map, the previous greedy path ended there as a dead-end: the greedy
-			// algorithm retraced the incoming edge rather than advancing forward. Avoid that
-			// incoming edge when routing this segment so the path is forced to find a genuine
+			// If routeStart is degree-1 in the accumulated map, the previous greedy path ended
+			// there as a dead-end: the greedy algorithm retraced the incoming edge rather than
+			// advancing forward. Avoid that incoming edge so the path is forced to find a genuine
 			// forward route. This keeps the degree-1 corner as an interior node rather than a
 			// prunable dead-end, which is critical when that corner is a river confluence shared
 			// with another river.
 			Predicate<Edge> avoidIncomingEdge = null;
-			if (lastCorner != null && segment.c0().equals(lastCorner) && cornerDegreeInEdges(lastCorner, polylineEdgeLevels) == 1)
+			if (lastCorner != null && cornerDegreeInEdges(lastCorner, polylineEdgeLevels) == 1)
 			{
 				for (Edge e : polylineEdgeLevels.keySet())
 				{
@@ -656,14 +668,14 @@ public class SubMapCreator
 				}
 			}
 
-			collectGreedyPathEdges(segment.c0(), segment.c1(), segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean, avoidIncomingEdge);
-			pruneFingers(segmentEdgeLevels, segment.c0(), segment.c1());
+			collectGreedyPathEdges(routeStart, routeEnd, segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean, avoidIncomingEdge);
+			pruneFingers(segmentEdgeLevels, routeStart, routeEnd);
 			segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 			if (!segmentEdgeLevels.isEmpty())
 			{
 				if (firstCorner == null)
-					firstCorner = segment.c0();
-				lastCorner = segment.c1();
+					firstCorner = routeStart;
+				lastCorner = routeEnd;
 			}
 		}
 
@@ -848,11 +860,6 @@ public class SubMapCreator
 		return segments;
 	}
 
-	private static void collectGreedyPathEdges(Corner c0, Corner c1, int scaledLevel, WorldGraph newGraph, Map<Edge, Integer> edgeLevels, Predicate<Corner> avoidCorner)
-	{
-		collectGreedyPathEdges(c0, c1, scaledLevel, newGraph, edgeLevels, avoidCorner, null);
-	}
-
 	/**
 	 * Runs findPathGreedy between c0 and c1, merging all result edges into edgeLevels (keeping the max level if an edge is already present). {@code avoidCorner} is forwarded to
 	 * {@link WorldGraph#findPathGreedy(Corner, Corner, Predicate, Predicate)} to exclude unwanted corners during the search; pass {@code null} to allow all corners.
@@ -935,8 +942,8 @@ public class SubMapCreator
 
 	/**
 	 * Reduces {@code edgeLevels} to a simple path from {@code start} to {@code end} by BFS within the edgeLevels subgraph, discarding any loops or dangling branches that {@link #pruneFingers}
-	 * cannot detect. If {@code start} cannot reach {@code end} (the polyline has a gap from a failed segment routing), falls back to {@link #simplifyEachComponent} to clean up each connected
-	 * component independently.
+	 * cannot detect. If {@code start} cannot reach {@code end} — which should not happen after the segment-chaining fix in {@link #transferPolylineToSubMap} but is handled defensively — leaves
+	 * {@code edgeLevels} unchanged.
 	 */
 	private static void simplifyToPath(Map<Edge, Integer> edgeLevels, Corner start, Corner end)
 	{
@@ -969,10 +976,7 @@ public class SubMapCreator
 
 		if (!parentEdge.containsKey(end))
 		{
-			// start cannot reach end — the polyline has a gap from failed segment routing.
-			// Simplify each connected component independently so that overlapping segment paths
-			// that created branches or cycles within each piece are cleaned up.
-			simplifyEachComponent(edgeLevels);
+			// start cannot reach end; leave edgeLevels unchanged as a defensive fallback.
 			return;
 		}
 
@@ -988,113 +992,6 @@ public class SubMapCreator
 			current = edgeOtherCorner(e, current);
 		}
 		edgeLevels.keySet().retainAll(pathEdges);
-	}
-
-	/**
-	 * Finds each connected component in {@code edgeLevels} and reduces it to a simple path. The two endpoints of each component's path are determined by finding a degree-1 corner and then using BFS
-	 * to locate the farthest reachable corner in the same component. Components with no degree-1 corners (pure cycles) are discarded entirely, since rivers should not form cycles.
-	 */
-	private static void simplifyEachComponent(Map<Edge, Integer> edgeLevels)
-	{
-		// Build degree map to identify degree-1 endpoints.
-		Map<Corner, Integer> degree = new HashMap<>();
-		for (Edge e : edgeLevels.keySet())
-		{
-			if (e.v0 != null)
-				degree.merge(e.v0, 1, Integer::sum);
-			if (e.v1 != null)
-				degree.merge(e.v1, 1, Integer::sum);
-		}
-
-		Set<Corner> globalVisited = new HashSet<>();
-		Set<Edge> keptEdges = new HashSet<>();
-
-		for (Corner seed : getEdgeCorners(edgeLevels))
-		{
-			if (globalVisited.contains(seed))
-				continue;
-
-			// BFS to collect all corners in this connected component.
-			Set<Corner> component = new HashSet<>();
-			Queue<Corner> bfsQueue = new LinkedList<>();
-			bfsQueue.add(seed);
-			component.add(seed);
-			while (!bfsQueue.isEmpty())
-			{
-				Corner current = bfsQueue.poll();
-				for (Edge e : current.protrudes)
-				{
-					if (!edgeLevels.containsKey(e))
-						continue;
-					Corner neighbor = edgeOtherCorner(e, current);
-					if (neighbor != null && !component.contains(neighbor))
-					{
-						component.add(neighbor);
-						bfsQueue.add(neighbor);
-					}
-				}
-			}
-			globalVisited.addAll(component);
-
-			// Find a degree-1 corner to use as one endpoint of the path.
-			Corner endA = null;
-			for (Corner c : component)
-			{
-				if (degree.getOrDefault(c, 0) == 1)
-				{
-					endA = c;
-					break;
-				}
-			}
-			if (endA == null)
-			{
-				// Pure cycle: no degree-1 corner; discard the entire component.
-				continue;
-			}
-
-			// BFS from endA within the component to find the farthest corner (endB).
-			// For a tree this is the other end of the longest path (diameter).
-			Corner endB = endA;
-			Set<Corner> bfsVisited = new HashSet<>();
-			Queue<Corner> diamQ = new LinkedList<>();
-			bfsVisited.add(endA);
-			diamQ.add(endA);
-			while (!diamQ.isEmpty())
-			{
-				Corner current = diamQ.poll();
-				endB = current;
-				for (Edge e : current.protrudes)
-				{
-					if (!edgeLevels.containsKey(e))
-						continue;
-					if (!component.contains(e.v0 != null ? e.v0 : e.v1))
-						continue;
-					Corner neighbor = edgeOtherCorner(e, current);
-					if (neighbor != null && !bfsVisited.contains(neighbor))
-					{
-						bfsVisited.add(neighbor);
-						diamQ.add(neighbor);
-					}
-				}
-			}
-
-			if (endB.equals(endA))
-				continue;
-
-			// Build the edge subset for this component, then simplify it to a simple path.
-			Map<Edge, Integer> componentEdges = new HashMap<>();
-			for (Map.Entry<Edge, Integer> entry : edgeLevels.entrySet())
-			{
-				Corner v0 = entry.getKey().v0, v1 = entry.getKey().v1;
-				if ((v0 != null && component.contains(v0)) || (v1 != null && component.contains(v1)))
-					componentEdges.put(entry.getKey(), entry.getValue());
-			}
-
-			simplifyToPath(componentEdges, endA, endB);
-			keptEdges.addAll(componentEdges.keySet());
-		}
-
-		edgeLevels.keySet().retainAll(keptEdges);
 	}
 
 	/**
