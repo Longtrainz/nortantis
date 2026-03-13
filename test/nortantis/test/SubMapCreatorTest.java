@@ -148,7 +148,7 @@ public class SubMapCreatorTest
 
 		int worldSize = SubMapDialog.computeDefaultWorldSize(originalSettings, selectionBoundsRI);
 
-		long seed = 1671274498L;
+		long seed = 291119026L;
 		MapSettings subMapSettings = SubMapCreator.createSubMapSettings(originalSettings, originalGraph, selectionBoundsRI, worldSize,
 				originalSettings.resolution, seed, true);
 

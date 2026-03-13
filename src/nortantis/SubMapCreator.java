@@ -806,7 +806,8 @@ public class SubMapCreator
 				{
 					Corner c0 = riToNewCorner(through.get().getFirst(), selectionBoundsRI, newGraph);
 					Corner c1 = riToNewCorner(through.get().getSecond(), selectionBoundsRI, newGraph);
-					if (c0 != null && c1 != null && !c0.equals(c1))
+					if (c0 != null && c1 != null && !c0.equals(c1)
+						&& !isNewCornerAdjacentToWater(c0, newEdits) && !isNewCornerAdjacentToWater(c1, newEdits))
 					{
 						boolean loopDetected = cornersInSegments.contains(c1);
 						segments.add(new RiverSegment(c0, c1, scaledLevel, false, loopDetected));
@@ -842,8 +843,9 @@ public class SubMapCreator
 				effectiveV1 = sourceV1RI;
 			}
 
+			boolean c0WaterAdjacentIntentional = i == 0 && v0Inside && isSourceCornerAdjacentToWater(sourceV0, originalEdits);
 			Corner c0;
-			if (i == 0 && v0Inside && isSourceCornerAdjacentToWater(sourceV0, originalEdits))
+			if (c0WaterAdjacentIntentional)
 			{
 				// Starting corner is adjacent to water: seek the closest water-adjacent new-graph
 				// corner so the river reliably originates from a lake or ocean.
@@ -854,6 +856,7 @@ public class SubMapCreator
 				c0 = riToNewCorner(effectiveV0, selectionBoundsRI, newGraph);
 			}
 
+			boolean c1WaterAdjacentIntentional = stopAfter || (i == polylineEdges.size() - 1 && isSourceCornerAdjacentToWater(sourceV1, originalEdits));
 			Corner c1;
 			if (stopAfter)
 			{
@@ -870,6 +873,23 @@ public class SubMapCreator
 			else
 			{
 				c1 = riToNewCorner(effectiveV1, selectionBoundsRI, newGraph);
+			}
+
+			// A waypoint that unintentionally lands on a water-adjacent corner is invalid: the
+			// greedy search avoids coast/ocean/water corners and cannot route to or from such a
+			// corner, so the segment would contribute nothing. Discard it so the routing chain
+			// flows through without this broken waypoint.
+			if (c0 != null && !c0WaterAdjacentIntentional && isNewCornerAdjacentToWater(c0, newEdits))
+			{
+				if (stopAfter)
+					break;
+				continue;
+			}
+			if (c1 != null && !c1WaterAdjacentIntentional && isNewCornerAdjacentToWater(c1, newEdits))
+			{
+				if (stopAfter)
+					break;
+				continue;
 			}
 
 			if (c0 != null && c1 != null && !c0.equals(c1))
