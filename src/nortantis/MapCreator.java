@@ -843,7 +843,7 @@ public class MapCreator implements WarningLogger
 			{
 				p.setColor(Color.red);
 				p.setBasicStroke((float) settings.resolution);
-				final int diameter = (int) (12.0 * settings.resolution);
+				final int diameter = (int) (16.0 * settings.resolution);
 				for (Integer index : DebugFlags.getIndexesOfCornersToHighlight())
 				{
 					Corner c = graph.corners.get(index);
