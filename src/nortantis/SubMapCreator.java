@@ -606,7 +606,7 @@ public class SubMapCreator
 		return Math.max(1.0, zoomFactor * zoomFactor / Math.max(1.0, Math.pow(detailRatio, 0.5)));
 	}
 
-	private record RiverSegment(Corner c0, Corner c1, int level, boolean stopAfter)
+	private record RiverSegment(Corner c0, Corner c1, int level, boolean stopAfter, boolean loopClosing)
 	{
 	}
 
@@ -628,6 +628,9 @@ public class SubMapCreator
 
 		// New-graph edges → their river level, accumulated across all source segments of this polyline.
 		Map<Edge, Integer> polylineEdgeLevels = new HashMap<>();
+		// Edges from the loop-closing segment (if any), kept separate so simplifyToPath can clean
+		// up the main path before they are merged back in.
+		Map<Edge, Integer> loopClosingEdgeLevels = new HashMap<>();
 		Corner firstCorner = null;
 		Corner lastCorner = null;
 		for (RiverSegment segment : segments)
@@ -670,12 +673,22 @@ public class SubMapCreator
 
 			collectGreedyPathEdges(routeStart, routeEnd, segment.level(), newGraph, segmentEdgeLevels, avoidCoastAndOcean, avoidIncomingEdge);
 			pruneFingers(segmentEdgeLevels, routeStart, routeEnd);
-			segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
-			if (!segmentEdgeLevels.isEmpty())
+
+			if (segment.loopClosing())
 			{
-				if (firstCorner == null)
-					firstCorner = routeStart;
-				lastCorner = routeEnd;
+				// Keep loop-closing edges separate so simplifyToPath can clean up the main path
+				// using the pre-loop lastCorner, then we merge them back in afterward.
+				segmentEdgeLevels.forEach((k, v) -> loopClosingEdgeLevels.merge(k, v, Math::max));
+			}
+			else
+			{
+				segmentEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
+				if (!segmentEdgeLevels.isEmpty())
+				{
+					if (firstCorner == null)
+						firstCorner = routeStart;
+					lastCorner = routeEnd;
+				}
 			}
 		}
 
@@ -684,6 +697,7 @@ public class SubMapCreator
 		// Falls back to per-component simplification when the polyline has a gap (disconnected
 		// segments from a failed routing), cleaning up branches and cycles within each piece.
 		simplifyToPath(polylineEdgeLevels, firstCorner, lastCorner);
+		loopClosingEdgeLevels.forEach((k, v) -> polylineEdgeLevels.merge(k, v, Math::max));
 
 		boolean lastEdgeWasStopAfter = !segments.isEmpty() && segments.get(segments.size() - 1).stopAfter();
 
@@ -792,11 +806,13 @@ public class SubMapCreator
 				{
 					Corner c0 = riToNewCorner(through.get().getFirst(), selectionBoundsRI, newGraph);
 					Corner c1 = riToNewCorner(through.get().getSecond(), selectionBoundsRI, newGraph);
-					if (c0 != null && c1 != null && !c0.equals(c1) && !cornersInSegments.contains(c0) && !cornersInSegments.contains(c1))
+					if (c0 != null && c1 != null && !c0.equals(c1))
 					{
-						segments.add(new RiverSegment(c0, c1, scaledLevel, false));
+						boolean loopDetected = cornersInSegments.contains(c1);
+						segments.add(new RiverSegment(c0, c1, scaledLevel, false, loopDetected));
 						cornersInSegments.add(c0);
-						cornersInSegments.add(c1);
+						if (loopDetected)
+							break;
 					}
 				}
 				continue;
@@ -856,14 +872,15 @@ public class SubMapCreator
 				c1 = riToNewCorner(effectiveV1, selectionBoundsRI, newGraph);
 			}
 
-			if (c0 != null && c1 != null && !c0.equals(c1) && !cornersInSegments.contains(c0) && !cornersInSegments.contains(c1))
+			if (c0 != null && c1 != null && !c0.equals(c1))
 			{
-				segments.add(new RiverSegment(c0, c1, scaledLevel, stopAfter));
+				boolean loopDetected = cornersInSegments.contains(c1);
+				segments.add(new RiverSegment(c0, c1, scaledLevel, stopAfter, loopDetected));
 				cornersInSegments.add(c0);
-				cornersInSegments.add(c1);
+				if (stopAfter || loopDetected)
+					break;
 			}
-
-			if (stopAfter)
+			else if (stopAfter)
 				break;
 		}
 		return segments;
