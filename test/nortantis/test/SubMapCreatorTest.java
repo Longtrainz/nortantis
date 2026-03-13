@@ -38,6 +38,7 @@ public class SubMapCreatorTest
 	private static final boolean forceWriteSubMapRiversHaveNoFingers = false;
 	private static final boolean forceWriteSubMapComplexRiversHaveNoFingersOrLoops = false;
 	private static final boolean forceWriteSubMapRiversHaveNoLoops = false;
+	private static final boolean forceWriteSubMapTShapedRiverHasThreeMouths = false;
 
 	@BeforeAll
 	public static void setUpBeforeClass() throws IOException
@@ -208,6 +209,52 @@ public class SubMapCreatorTest
 		if (forceWriteSubMapRiversHaveNoLoops)
 		{
 			saveFailedMap(subMapSettings, "subMapRiversHaveNoLoops");
+		}
+	}
+
+	/**
+	 * Verifies that a T-shaped river in a sub-map has 3 mouths where it meets the ocean. This is a regression test for a bug where one arm of the T was incorrectly dropped, leaving only 2
+	 * mouths.
+	 */
+	@Test
+	public void subMapTShapedRiverHasThreeMouths() throws Exception
+	{
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort").toString();
+		MapSettings originalSettings = new MapSettings(originalSettingsPath);
+		originalSettings.resolution = 0.5;
+
+		WorldGraph originalGraph = MapCreator.createGraphForUnitTests(originalSettings);
+
+		// Sub-map selection bounds in RI (resolution-invariant) coordinates.
+		Rectangle selectionBoundsRI = new Rectangle(661, 18, 2013, 4078);
+
+		int worldSize = SubMapDialog.computeDefaultWorldSize(originalSettings, selectionBoundsRI);
+
+		long seed = 1670082139L;
+		MapSettings subMapSettings = SubMapCreator.createSubMapSettings(originalSettings, originalGraph, selectionBoundsRI, worldSize,
+				originalSettings.resolution, seed, true);
+
+		WorldGraph newGraph = MapCreator.createGraphForUnitTests(subMapSettings);
+
+		List<River> rivers = newGraph.findRivers();
+
+		long mouthCount = rivers.stream().filter(river ->
+		{
+			List<Edge> edges = river.getEdges();
+			if (edges.isEmpty())
+				return false;
+			return edges.get(0).isRiverTouchingOcean() || edges.get(edges.size() - 1).isRiverTouchingOcean();
+		}).count();
+
+		if (mouthCount != 3)
+		{
+			String failedMapPath = saveFailedMap(subMapSettings, "subMapTShapedRiverHasThreeMouths");
+			fail("Expected the T-shaped river to have 3 mouths meeting the ocean, but found " + mouthCount
+					+ ".\nFailed map written to: " + failedMapPath);
+		}
+		else if (forceWriteSubMapTShapedRiverHasThreeMouths)
+		{
+			saveFailedMap(subMapSettings, "subMapTShapedRiverHasThreeMouths");
 		}
 	}
 
