@@ -39,6 +39,7 @@ public class SubMapCreatorTest
 	private static final boolean forceWriteSubMapComplexRiversHaveNoFingersOrLoops = false;
 	private static final boolean forceWriteSubMapRiversHaveNoLoops = false;
 	private static final boolean forceWriteSubMapTShapedRiverHasThreeMouths = false;
+	private static final boolean forceWriteSubMapRiversFormConfluence2 = false;
 
 	@BeforeAll
 	public static void setUpBeforeClass() throws IOException
@@ -77,33 +78,8 @@ public class SubMapCreatorTest
 
 		assertEquals(2, rivers.size(), "Sub-map should contain exactly 2 rivers (expected a main river and a tributary)");
 
-		// Build corner sets for each river and check that some pair shares a corner,
-		// indicating the rivers are joined at a confluence.
-		boolean confluenceFound = false;
-		outer:
-		for (int i = 0; i < rivers.size(); i++)
-		{
-			Set<Corner> cornersI = rivers.get(i).getCorners();
-			for (int j = i + 1; j < rivers.size(); j++)
-			{
-				Set<Corner> cornersJ = rivers.get(j).getCorners();
-				Set<Corner> intersection = new HashSet<>(cornersI);
-				intersection.retainAll(cornersJ);
-				if (!intersection.isEmpty())
-				{
-					confluenceFound = true;
-					break outer;
-				}
-			}
-		}
-
-		if (!confluenceFound)
-		{
-			String failedMapPath = saveFailedMap(subMapSettings, "subMapRiversFormConfluence");
-			fail("The rivers in the sub-map should share a common corner at their confluence.\nFailed map written to: "
-					+ failedMapPath);
-		}
-		else if (forceWriteSubMapRiversFormConfluence)
+		assertRiversAreAllConnected(rivers, subMapSettings, "subMapRiversFormConfluence");
+		if (forceWriteSubMapRiversFormConfluence)
 		{
 			saveFailedMap(subMapSettings, "subMapRiversFormConfluence");
 		}
@@ -258,6 +234,38 @@ public class SubMapCreatorTest
 		}
 	}
 
+	/**
+	 * Verifies that a T-shaped river in a sub-map has all its arms connected at the junction. This is a regression test for a bug where one arm of the T was disconnected from the others.
+	 */
+	@Test
+	public void subMapRiversFormConfluence2() throws Exception
+	{
+		String originalSettingsPath = Paths.get("unit test files", "map settings", "riversForSubMaps.nort").toString();
+		MapSettings originalSettings = new MapSettings(originalSettingsPath);
+		originalSettings.resolution = 0.5;
+
+		WorldGraph originalGraph = MapCreator.createGraphForUnitTests(originalSettings);
+
+		// Sub-map selection bounds in RI (resolution-invariant) coordinates.
+		Rectangle selectionBoundsRI = new Rectangle(661, 18, 2013, 4078);
+
+		int worldSize = SubMapDialog.computeDefaultWorldSize(originalSettings, selectionBoundsRI);
+
+		long seed = 1222331460L;
+		MapSettings subMapSettings = SubMapCreator.createSubMapSettings(originalSettings, originalGraph, selectionBoundsRI, worldSize,
+				originalSettings.resolution, seed, true);
+
+		WorldGraph newGraph = MapCreator.createGraphForUnitTests(subMapSettings);
+
+		List<River> rivers = newGraph.findRivers();
+
+		assertRiversAreAllConnected(rivers, subMapSettings, "subMapRiversFormConfluence2");
+		if (forceWriteSubMapRiversFormConfluence2)
+		{
+			saveFailedMap(subMapSettings, "subMapRiversFormConfluence2");
+		}
+	}
+
 	private String saveFailedMap(MapSettings subMapSettings, String testName) throws Exception
 	{
 		File failedMapsDir = Paths.get("unit test files", failedMapsFolderName).toFile();
@@ -266,6 +274,63 @@ public class SubMapCreatorTest
 		Image map = new MapCreator().createMap(subMapSettings, null, null);
 		ImageHelper.getInstance().write(map, failedMapPath);
 		return failedMapPath;
+	}
+
+	/**
+	 * Asserts that all rivers form a single connected component, i.e. every river shares at least one corner with some other river. Uses union-find to detect disconnected river arms.
+	 */
+	private void assertRiversAreAllConnected(List<River> rivers, MapSettings subMapSettings, String testName) throws Exception
+	{
+		if (rivers.size() <= 1)
+			return;
+
+		// Union-find: map each river index to its root.
+		int[] parent = new int[rivers.size()];
+		for (int i = 0; i < parent.length; i++)
+			parent[i] = i;
+
+		// Find with path compression.
+		// Declared as a local array to allow use in lambda below.
+		// We use a helper array trick since lambdas require effectively final variables.
+
+		for (int i = 0; i < rivers.size(); i++)
+		{
+			Set<Corner> cornersI = rivers.get(i).getCorners();
+			for (int j = i + 1; j < rivers.size(); j++)
+			{
+				Set<Corner> cornersJ = rivers.get(j).getCorners();
+				Set<Corner> intersection = new HashSet<>(cornersI);
+				intersection.retainAll(cornersJ);
+				if (!intersection.isEmpty())
+				{
+					// Union i and j.
+					int rootI = i, rootJ = j;
+					while (parent[rootI] != rootI)
+						rootI = parent[rootI];
+					while (parent[rootJ] != rootJ)
+						rootJ = parent[rootJ];
+					if (rootI != rootJ)
+						parent[rootI] = rootJ;
+				}
+			}
+		}
+
+		// Count distinct roots.
+		Set<Integer> roots = new HashSet<>();
+		for (int i = 0; i < parent.length; i++)
+		{
+			int root = i;
+			while (parent[root] != root)
+				root = parent[root];
+			roots.add(root);
+		}
+
+		if (roots.size() > 1)
+		{
+			String failedMapPath = saveFailedMap(subMapSettings, testName);
+			fail("Rivers are not all connected: found " + roots.size() + " disconnected components among " + rivers.size()
+					+ " rivers.\nFailed map written to: " + failedMapPath);
+		}
 	}
 
 	private void assertRiversHaveNoLoops(List<River> rivers, MapSettings subMapSettings, String testName) throws Exception
