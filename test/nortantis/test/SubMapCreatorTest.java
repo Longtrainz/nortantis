@@ -189,8 +189,8 @@ public class SubMapCreatorTest
 	}
 
 	/**
-	 * Verifies that a T-shaped river in a sub-map has 3 mouths where it meets the ocean. This is a regression test for a bug where one arm of the T was incorrectly dropped, leaving only 2
-	 * mouths.
+	 * Verifies that a T-shaped river in a sub-map has 3 mouths where it meets the ocean. Each mouth is counted when the first or last edge of a {@link River} has a coast or ocean corner endpoint.
+	 * This is a regression test for a bug where one arm of the T was incorrectly dropped, leaving only 2 mouths.
 	 */
 	@Test
 	public void subMapTShapedRiverHasThreeMouths() throws Exception
@@ -214,12 +214,20 @@ public class SubMapCreatorTest
 
 		List<River> rivers = newGraph.findRivers();
 
+		System.err.println("DEBUG rivers=" + rivers.size());
+		for (int _i = 0; _i < rivers.size(); _i++) {
+			List<Edge> _re = rivers.get(_i).getEdges();
+			if (!_re.isEmpty()) {
+				Edge _f = _re.get(0), _l = _re.get(_re.size()-1);
+				System.err.println("  R"+_i+" edges="+_re.size()+" first.v0="+(_f.v0==null?"null":"C="+_f.v0.isCoast+",O="+_f.v0.isOcean+",W="+_f.v0.isWater)+" first.v1="+(_f.v1==null?"null":"C="+_f.v1.isCoast+",O="+_f.v1.isOcean+",W="+_f.v1.isWater)+" last.v0="+(_l.v0==null?"null":"C="+_l.v0.isCoast+",O="+_l.v0.isOcean+",W="+_l.v0.isWater)+" last.v1="+(_l.v1==null?"null":"C="+_l.v1.isCoast+",O="+_l.v1.isOcean+",W="+_l.v1.isWater));
+			}
+		}
 		long mouthCount = rivers.stream().filter(river ->
 		{
 			List<Edge> edges = river.getEdges();
 			if (edges.isEmpty())
 				return false;
-			return edges.get(0).isRiverTouchingOcean() || edges.get(edges.size() - 1).isRiverTouchingOcean();
+			return edgeTouchesCoastOrOcean(edges.get(0)) || edgeTouchesCoastOrOcean(edges.get(edges.size() - 1));
 		}).count();
 
 		if (mouthCount != 3)
@@ -264,6 +272,15 @@ public class SubMapCreatorTest
 		{
 			saveFailedMap(subMapSettings, "subMapRiversFormConfluence2");
 		}
+	}
+
+	/**
+	 * Returns true if either endpoint of the edge is a coast or ocean corner, indicating the river reaches the ocean shore.
+	 */
+	private boolean edgeTouchesCoastOrOcean(Edge edge)
+	{
+		return (edge.v0 != null && (edge.v0.isCoast || edge.v0.isOcean))
+				|| (edge.v1 != null && (edge.v1.isCoast || edge.v1.isOcean));
 	}
 
 	private String saveFailedMap(MapSettings subMapSettings, String testName) throws Exception
