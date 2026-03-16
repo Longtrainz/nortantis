@@ -112,14 +112,14 @@ public class SubMapDialog
 		mainWindow.mapEditingPanel.clearAllToolSpecificSelectionsAndHighlights();
 		mainWindow.enableOrDisableFieldsThatRequireMap(false, null, true);
 
-		step1Dialog = new JDialog(mainWindow, "Create Sub-Map – Select Region", false);
+		step1Dialog = new JDialog(mainWindow, Translation.get("subMapDialog.step1.title"), false);
 		step1Dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
 
 		GridBagOrganizer organizer = new GridBagOrganizer();
 		final int topInset = 2;
 
 		// Instructions
-		JLabel instructionsLabel = new JLabel("<html>Drag on the map to select the region for the sub-map.<br>" + "When done, click <b>Next</b> to choose the detail level.</html>");
+		JLabel instructionsLabel = new JLabel(Translation.get("subMapDialog.step1.instructions"));
 		organizer.addLeftAlignedComponent(instructionsLabel);
 
 		// Aspect ratio buttons
@@ -158,9 +158,8 @@ public class SubMapDialog
 			aspectRatioButtons.add(btn);
 		}
 		SegmentedButtonWidget segmentedButtonWidget = new SegmentedButtonWidget(aspectRatioButtons);
-		segmentedButtonWidget.addToOrganizer(organizer, "Aspect ratio:",
-				"Constrain the aspect ratio of the selection. Even when using " + GeneratedDimension.Custom + ", the aspect ratio must be between 1:" + GeneratedDimension.MAX_ASPECT_RATIO + " and "
-						+ GeneratedDimension.MAX_ASPECT_RATIO + ":1.", topInset);
+		segmentedButtonWidget.addToOrganizer(organizer, Translation.get("subMapDialog.step1.aspectRatio.label"),
+				Translation.get("subMapDialog.step1.aspectRatio.help", GeneratedDimension.Custom.displayName(), GeneratedDimension.MAX_ASPECT_RATIO), topInset);
 
 		// Position and size spinners (use display dimensions, which are rotated relative to generatedWidth/Height for 90°/270°)
 		int mapDisplayW = getMapDisplayWidth();
@@ -177,8 +176,8 @@ public class SubMapDialog
 		widthSpinner.setPreferredSize(spinnerSize);
 		heightSpinner.setPreferredSize(spinnerSize);
 
-		organizer.addLabelAndComponentsHorizontalWithTopInset("Position:", "",
-				Arrays.asList(new JLabel("X:"), xSpinner, new JLabel("Y:"), ySpinner, new JLabel("Width:"), widthSpinner, new JLabel("Height:"), heightSpinner), topInset);
+		organizer.addLabelAndComponentsHorizontalWithTopInset(Translation.get("subMapDialog.step1.position.label"), "",
+				Arrays.asList(new JLabel(Translation.get("subMapDialog.step1.x")), xSpinner, new JLabel(Translation.get("subMapDialog.step1.y")), ySpinner, new JLabel(Translation.get("subMapDialog.step1.width")), widthSpinner, new JLabel(Translation.get("subMapDialog.step1.height")), heightSpinner), topInset);
 
 		organizer.addVerticalFillerRow();
 
@@ -189,10 +188,10 @@ public class SubMapDialog
 		// Buttons row
 		JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
 
-		JButton cancelButton = new JButton("Cancel");
+		JButton cancelButton = new JButton(Translation.get("common.cancel"));
 		cancelButton.addActionListener(e -> cancelStep1());
 
-		step1NextButton = new JButton("Next →");
+		step1NextButton = new JButton(Translation.get("subMapDialog.step1.next"));
 		step1NextButton.setEnabled(false);
 		step1NextButton.addActionListener(e ->
 		{
@@ -338,19 +337,19 @@ public class SubMapDialog
 	{
 		if (w <= 0 || h <= 0)
 		{
-			return "Width and height must be at least 1.";
+			return Translation.get("subMapDialog.error.widthHeightMin");
 		}
 		if (x < 0 || y < 0)
 		{
-			return "X and Y must be at least 0.";
+			return Translation.get("subMapDialog.error.xyMin");
 		}
 		if (x + w > getMapDisplayWidth())
 		{
-			return "X + Width exceeds the map width (" + getMapDisplayWidth() + ").";
+			return Translation.get("subMapDialog.error.xWidthExceeds", getMapDisplayWidth());
 		}
 		if (y + h > getMapDisplayHeight())
 		{
-			return "Y + Height exceeds the map height (" + getMapDisplayHeight() + ").";
+			return Translation.get("subMapDialog.error.yHeightExceeds", getMapDisplayHeight());
 		}
 		return null;
 	}
@@ -444,7 +443,7 @@ public class SubMapDialog
 		// Use nextInt so the seed fits in an integer and displays as a readable value in the seed field.
 		subMapSeed = Helper.safeAbs(new Random().nextInt());
 
-		step2Dialog = new JDialog(mainWindow, "Create Sub-Map – Detail Level", true);
+		step2Dialog = new JDialog(mainWindow, Translation.get("subMapDialog.step2.title"), true);
 		step2Dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
 		step2Dialog.setResizable(true);
 		step2Dialog.setSize(900, 775);
@@ -465,13 +464,12 @@ public class SubMapDialog
 		boolean matchDetailPossible = oneXWorldSize >= minPolygonsInSubMap;
 
 		// Advice label explaining key sub-map limitations.
-		JLabel adviceLabel = new JLabel("<html>" + "Sub-map land shapes are approximate: each sub-map uses a new random polygon grid, " + "so coastlines will differ slightly from the original. "
-				+ "After creating a sub-map, check that any cities or icons near shores haven't shifted onto water, " + "and that rivers follow the expected paths." + "</html>");
+		JLabel adviceLabel = new JLabel(Translation.get("subMapDialog.step2.advice"));
 		controlOrganizer.addLeftAlignedComponent(adviceLabel, 0, 8, false);
 
 		// Number of polygons: radio buttons to choose between matching source detail or a custom level.
-		JRadioButton matchSourceRadio = new JRadioButton(String.format("Match source detail (\u2248%d polygons)", clampedOneXWorldSize));
-		customRadio = new JRadioButton("Choose");
+		JRadioButton matchSourceRadio = new JRadioButton(Translation.get("subMapDialog.step2.matchSourceDetail", clampedOneXWorldSize));
+		customRadio = new JRadioButton(Translation.get("subMapDialog.step2.choose"));
 		ButtonGroup detailModeGroup = new ButtonGroup();
 		detailModeGroup.add(matchSourceRadio);
 		detailModeGroup.add(customRadio);
@@ -486,14 +484,12 @@ public class SubMapDialog
 			customRadio.setSelected(true);
 		}
 
-		controlOrganizer.addLabelAndComponentsHorizontalWithTopInset("Number of polygons:", "", Arrays.asList(matchSourceRadio, customRadio), topInset);
+		controlOrganizer.addLabelAndComponentsHorizontalWithTopInset(Translation.get("subMapDialog.step2.numberOfPolygons.label"), "", Arrays.asList(matchSourceRadio, customRadio), topInset);
 
 		// Explanation shown when the selected area is too small to match the source detail level.
 		if (!matchDetailPossible)
 		{
-			JLabel matchDetailDisabledLabel = new JLabel(
-					"<html>\"Match source detail\" is unavailable because the selected area is too small " + "to generate the minimum of " + minPolygonsInSubMap + " polygons at source detail. "
-							+ "Use Choose to set the polygon count manually.</html>");
+			JLabel matchDetailDisabledLabel = new JLabel(Translation.get("subMapDialog.step2.matchDetailDisabled", minPolygonsInSubMap));
 			matchDetailDisabledLabel.setForeground(new java.awt.Color(160, 90, 0));
 			controlOrganizer.addLeftAlignedComponent(matchDetailDisabledLabel, 0, 4, false);
 		}
@@ -512,22 +508,18 @@ public class SubMapDialog
 			double selArea = selBoundsRI.width * selBoundsRI.height;
 			double oneX = origSettings.worldSize * selArea / origMapArea;
 			double ratio = (oneX > 0) ? value / oneX : 1.0;
-			return String.format("%.1f\u00d7, \u2248%d polygons", ratio, value);
+			return Translation.get("subMapDialog.step2.sliderDisplay", String.format("%.1f", ratio), value);
 		}, () ->
 		{
 			triggerPreviewRedraw();
 		}, null);
 		detailSlider = detailSliderWithValue.slider;
-		String polygonsTooltip =
-				"<html>The number of Voronoi polygons in the sub-map, which controls its level of detail.<br>" + "The multiplier shows how many times more polygons the sub-map has relative<br>"
-						+ "to the equivalent area of the source map. Values below 1\u00d7 mean less detail.<br>" + "Values above 1\u00d7 mean more detail. The number of polygons must be between "
-						+ minPolygonsInSubMap + "<br>and " + SettingsGenerator.maxWorldSize + ".</html>";
+		String polygonsTooltip = Translation.get("subMapDialog.step2.polygons.tooltip", minPolygonsInSubMap, SettingsGenerator.maxWorldSize);
 		sliderRowHider = detailSliderWithValue.addToOrganizer(controlOrganizer, "", polygonsTooltip);
 		sliderRowHider.setVisible(!matchDetailPossible);
 
 		// Warning shown when Choose mode is selected (indented to match slider).
-		JLabel customWarningLabel = new JLabel("<html>" + "When manually choosing the detail level, icons are redistributed across the new polygon grid. "
-				+ "At higher than source detail, icons appear smaller and may drift away from " + "coastlines and mountain ranges. At lower detail, they appear larger and sparser." + "</html>");
+		JLabel customWarningLabel = new JLabel(Translation.get("subMapDialog.step2.customWarning"));
 		customWarningLabel.setForeground(new java.awt.Color(160, 90, 0));
 		JPanel customWarningWrapper = new JPanel(new BorderLayout());
 		customWarningWrapper.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0));
@@ -600,22 +592,22 @@ public class SubMapDialog
 				handleChange();
 			}
 		});
-		JButton newSeedButton = new JButton("New Seed");
+		JButton newSeedButton = new JButton(Translation.get("theme.newSeed"));
 		newSeedButton.setToolTipText(Translation.get("theme.newSeed.tooltip"));
 		newSeedButton.addActionListener(e -> seedTextField.setText(String.valueOf(Helper.safeAbs(new Random().nextInt()))));
-		controlOrganizer.addLabelAndComponentsHorizontalWithTopInset("Random seed:", "", Arrays.asList(seedTextField, newSeedButton), topInset);
+		controlOrganizer.addLabelAndComponentsHorizontalWithTopInset(Translation.get("subMapDialog.step2.randomSeed.label"), "", Arrays.asList(seedTextField, newSeedButton), topInset);
 
 		mainPanel.add(controlOrganizer.panel, BorderLayout.NORTH);
 
 		// -- Preview area --
 		JPanel previewWrapper = new JPanel(new BorderLayout(0, 4));
 
-		JLabel previewLabel = new JLabel("Preview:");
+		JLabel previewLabel = new JLabel(Translation.get("subMapDialog.step2.preview.label"));
 		previewLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
 		previewWrapper.add(previewLabel, BorderLayout.NORTH);
 
 		BufferedImage placeholder = AwtBridge.toBufferedImage(nortantis.platform.ImageHelper.getInstance()
-				.createPlaceholderImage(new String[] { "Drawing sub-map preview..." }, AwtBridge.fromAwtColor(SwingHelper.getTextColorForPlaceholderImages())));
+				.createPlaceholderImage(new String[] { Translation.get("subMapDialog.step2.drawingPreview") }, AwtBridge.fromAwtColor(SwingHelper.getTextColorForPlaceholderImages())));
 		previewPanel = new MapEditingPanel(placeholder);
 
 		previewContainer = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
@@ -643,7 +635,7 @@ public class SubMapDialog
 
 		JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 2));
 
-		JButton backButton = new JButton("← Back");
+		JButton backButton = new JButton(Translation.get("subMapDialog.step2.back"));
 		backButton.addActionListener(e ->
 		{
 			stopPreviewUpdater();
@@ -656,7 +648,7 @@ public class SubMapDialog
 			showStep1();
 		});
 
-		JButton cancelButton = new JButton("Cancel");
+		JButton cancelButton = new JButton(Translation.get("common.cancel"));
 		cancelButton.addActionListener(e ->
 		{
 			stopPreviewUpdater();
@@ -666,7 +658,7 @@ public class SubMapDialog
 			mainWindow.enableOrDisableFieldsThatRequireMap(true, mainWindow.getSettingsFromGUI(false), true);
 		});
 
-		createButton = new JButton("Create");
+		createButton = new JButton(Translation.get("subMapDialog.step2.create"));
 		createButton.addActionListener(e -> handleCreate());
 
 		buttonRow.add(backButton);
@@ -906,7 +898,7 @@ public class SubMapDialog
 		MapSettings settings = lastSubMapSettings;
 		if (settings == null)
 		{
-			JOptionPane.showMessageDialog(step2Dialog, "The sub-map preview is not ready yet. Please wait a moment.", "Not Ready", JOptionPane.INFORMATION_MESSAGE);
+			JOptionPane.showMessageDialog(step2Dialog, Translation.get("subMapDialog.step2.notReady"), Translation.get("subMapDialog.step2.notReady.title"), JOptionPane.INFORMATION_MESSAGE);
 			return;
 		}
 		stopPreviewUpdater();

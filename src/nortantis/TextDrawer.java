@@ -363,7 +363,7 @@ public class TextDrawer
 		}
 	}
 
-	public Rectangle expandBoundsToIncludeText(List<MapText> mapTexts, WorldGraph graph, Rectangle bounds, MapSettings settings)
+	public Rectangle expandBoundsToIncludeText(List<MapText> mapTexts, Rectangle bounds, MapSettings settings)
 	{
 		if (!settings.drawText)
 		{
@@ -615,11 +615,11 @@ public class TextDrawer
 
 			// Use convolution to make a hazy background for the text.
 			float[][] kernel = ImageHelper.getInstance().createGaussianKernel(kernelSize);
-			try (Image haze1 = ImageHelper.getInstance().convolveGrayscale(textBG, kernel, true, false))
+			try (Image haze1 = ImageHelper.getInstance().convolveGrayscale(textBG, kernel, true, true))
 			{
 				// Threshold it and convolve it again to make the haze bigger.
 				ImageHelper.getInstance().threshold(haze1, 1);
-				try (Image haze2 = ImageHelper.getInstance().convolveGrayscale(haze1, kernel, true, false))
+				try (Image haze2 = ImageHelper.getInstance().convolveGrayscale(haze1, kernel, true, true))
 				{
 					ImageHelper.getInstance().combineImagesWithMaskInRegion(map, landAndOceanBackground, haze2,
 							((int) Math.round(textStart.x - textStartDiffInMaskCausedByCurvatureAndSpacing.x)) - padding,
