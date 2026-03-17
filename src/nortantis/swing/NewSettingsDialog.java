@@ -416,6 +416,7 @@ public class NewSettingsDialog extends JDialog
 
 		organizer.addLeftAlignedComponent(Box.createRigidArea(new Dimension((defaultSize.width / 2) - amountToSubtractFromLeftAndRightPanels, 0)));
 
+		organizer.addHorizontalSpacerRowToHelpComponentAlignment(0.66);
 		organizer.addVerticalFillerRow();
 	}
 
@@ -499,6 +500,7 @@ public class NewSettingsDialog extends JDialog
 
 		organizer.addLeftAlignedComponent(Box.createRigidArea(new Dimension((defaultSize.width / 2) - amountToSubtractFromLeftAndRightPanels, 0)));
 
+		organizer.addHorizontalSpacerRowToHelpComponentAlignment(0.66);
 		organizer.addVerticalFillerRow();
 	}
 
@@ -762,7 +764,6 @@ public class NewSettingsDialog extends JDialog
 			progressBarTimer.stop();
 			progressBar.setVisible(false);
 		}
-
 	}
 
 	private void updateRotationWarning()
