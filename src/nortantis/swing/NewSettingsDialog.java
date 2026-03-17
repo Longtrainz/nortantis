@@ -767,7 +767,7 @@ public class NewSettingsDialog extends JDialog
 
 	private void updateRotationWarning()
 	{
-		if (settings != null && settings.rightRotationCount != 0)
+		if (settings != null && settings.rightRotationCount != 0 && !dimensionsComboBox.getSelectedItem().equals(GeneratedDimension.Square))
 		{
 			int degrees = settings.rightRotationCount * 90;
 			rotationWarningLabel.setText("The map is rotated " + degrees + " degrees.");
@@ -786,12 +786,20 @@ public class NewSettingsDialog extends JDialog
 
 	public void handleMapChange()
 	{
-		nortantis.geom.Dimension size = getMapDrawingAreaSize();
-		if (size != null && size.width > 0.0 && size.height > 0.0)
+		// Defer to the next EDT cycle so that any row visibility changes (e.g. custom dimension
+		// spinners, rotation warning) have been laid out before we read the container size.
+		// Without this, getMapDrawingAreaSize() returns the stale pre-layout dimensions, causing
+		// the preview to render too large and be clipped at the bottom.
+		SwingUtilities.invokeLater(() ->
 		{
-			updater.setMaxMapSize(getMapDrawingAreaSize());
-			enableOrDisableProgressBar(true);
-			updater.createAndShowMapFull();
-		}
+			validate();
+			nortantis.geom.Dimension size = getMapDrawingAreaSize();
+			if (size != null && size.width > 0.0 && size.height > 0.0)
+			{
+				updater.setMaxMapSize(size);
+				enableOrDisableProgressBar(true);
+				updater.createAndShowMapFull();
+			}
+		});
 	}
 }
