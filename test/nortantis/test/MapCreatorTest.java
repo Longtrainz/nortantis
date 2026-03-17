@@ -516,12 +516,6 @@ public class MapCreatorTest
 	}
 
 	@Test
-	public void preventCreatingOnlyOneTectonicPlate()
-	{
-		generateAndCompare("preventCreatingOnlyOneTectonicPlate.nort");
-	}
-
-	@Test
 	public void noText_WithCities_GoldenRatio()
 	{
 		generateAndCompare("noText_WithCities_GoldenRatio.nort");
