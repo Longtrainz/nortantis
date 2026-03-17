@@ -358,24 +358,13 @@ public class NewSettingsDialog extends JDialog
 
 		regionCountSlider = new JSlider();
 		regionCountSlider.setMinimum(SettingsGenerator.minRegionCount);
-		regionCountSlider.setMaximum(SettingsGenerator.maxRegionCount(SettingsGenerator.maxWorldSize));
+		regionCountSlider.setMaximum(SettingsGenerator.maxRegionCount);
 		regionCountSlider.setValue(3);
 		regionCountSlider.setSnapToTicks(true);
 		regionCountSlider.setMajorTickSpacing(1);
 		createMapChangeListener(regionCountSlider);
 		regionCountSliderWithDisplay = new SliderWithDisplayedValue(regionCountSlider);
 		regionCountSliderWithDisplay.addToOrganizer(organizer, Translation.get("newSettingsDialog.regionCount.label"), Translation.get("newSettingsDialog.regionCount.help"));
-
-		// Update region count slider max when world size changes.
-		worldSizeSlider.addChangeListener(e ->
-		{
-			int maxRegions = SettingsGenerator.maxRegionCount(worldSizeSlider.getValue());
-			regionCountSlider.setMaximum(maxRegions);
-			if (regionCountSlider.getValue() > maxRegions)
-			{
-				regionCountSlider.setValue(maxRegions);
-			}
-		});
 
 		landColoringMethodComboBox = new JComboBox<LandColoringMethod>();
 		for (LandColoringMethod method : LandColoringMethod.values())
@@ -658,8 +647,7 @@ public class NewSettingsDialog extends JDialog
 		{
 			landShapeComboBox.setSelectedItem(LandShape.Continents);
 		}
-		regionCountSlider.setMaximum(SettingsGenerator.maxRegionCount(settings.worldSize));
-		regionCountSlider.setValue(Math.min(settings.regionCount > 0 ? settings.regionCount : 3, regionCountSlider.getMaximum()));
+		regionCountSlider.setValue(settings.regionCount > 0 ? settings.regionCount : 3);
 		if (settings.drawRegionColors)
 		{
 			landColoringMethodComboBox.setSelectedItem(LandColoringMethod.ColorPoliticalRegions);

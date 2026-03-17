@@ -2039,11 +2039,11 @@ public class WorldGraph extends VoronoiGraph
 		int regionCountThreshold = 10;
 		if ((landShape == null || landShape == LandShape.Continents || landShape == LandShape.Scattered) && (worldSize >= worldSizeThreshold || regionCount >= regionCountThreshold))
 		{
-			int maxPossibleRegions = Math.min(SettingsGenerator.maxRegionCount(worldSize), Math.max(2, worldSize / 200));
+			assert SettingsGenerator.maxRegionCount >= 2;
 
 			// Each factor scales from 0 to 1. Use the max so that either being high is sufficient.
 			double worldSizeFactor = worldSize >= worldSizeThreshold ? Math.min(1.0, (worldSize - worldSizeThreshold) / (double) (SettingsGenerator.maxWorldSize - worldSizeThreshold)) : 0;
-			double regionFactor = regionCount >= regionCountThreshold ? Math.min(1.0, (regionCount - regionCountThreshold) / (double) Math.max(1, maxPossibleRegions - regionCountThreshold)) : 0;
+			double regionFactor = regionCount >= regionCountThreshold ? Math.min(1.0, (regionCount - regionCountThreshold) / (double) Math.max(1, SettingsGenerator.maxRegionCount - regionCountThreshold)) : 0;
 			double factor = Math.max(worldSizeFactor, regionFactor);
 
 			final double maxExtraOceanicRatio = 0.9;

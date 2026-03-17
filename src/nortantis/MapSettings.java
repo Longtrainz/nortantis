@@ -38,7 +38,7 @@ public class MapSettings implements Serializable
 	/**
 	 * When updating this, also update installers/version.txt
 	 */
-	public static final String currentVersion = "3.17";
+	public static final String currentVersion = "3.18";
 	public static final String fileExtension = "nort";
 	public static final String fileExtensionWithDot = "." + fileExtension;
 	public static final double defaultPointPrecision = 2.0;
@@ -1335,10 +1335,71 @@ public class MapSettings implements Serializable
 		runConversionForNewRangesForRandomRegionColorGeneratorSettings();
 		runConversionOnFillWithColorByType();
 		runConversionToFixCompassRosesGroupId();
+		runConversionToFillInLandShape();
+		runConversionForRegionCount();
+	}
+
+	private void runConversionForRegionCount()
+	{
+		if (isVersionGreaterThanOrEqualTo(version, "3.18"))
+		{
+			return;
+		}
+
+		if (regionCount > 0)
+		{
+			return;
+		}
+
+		Set<Integer> regionCounts = new HashSet<>();
+		for (CenterEdit cEdit : edits.centerEdits.values())
+		{
+			if (!cEdit.isWater)
+			{
+				regionCounts.add(cEdit.regionId);
+			}
+		}
+		regionCount = Math.min(SettingsGenerator.maxRegionCount, Math.max(2, regionCounts.size()));
+	}
+
+
+	/**
+	 * LandShape was added in version 3.18. For older maps, infer it from the edge and center land-to-water probabilities that were
+	 * previously used.
+	 */
+	private void runConversionToFillInLandShape()
+	{
+		if (isVersionGreaterThanOrEqualTo(version, "3.18"))
+		{
+			return;
+		}
+
+		if (landShape != null)
+		{
+			return;
+		}
+
+		if (edgeLandToWaterProbability < centerLandToWaterProbability)
+		{
+			landShape = LandShape.Continents;
+		}
+		else if (edgeLandToWaterProbability > centerLandToWaterProbability)
+		{
+			landShape = LandShape.Inland_Sea;
+		}
+		else
+		{
+			landShape = LandShape.Scattered;
+		}
 	}
 
 	private void runConversionOnFillWithColorByType()
 	{
+		if (isVersionGreaterThanOrEqualTo(version, "3.17"))
+		{
+			return;
+		}
+
 		boolean convertFillColor = shouldConvertFillColor();
 		if (convertFillColor)
 		{

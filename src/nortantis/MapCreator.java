@@ -274,7 +274,7 @@ public class MapCreator implements WarningLogger
 			// to two or vice versa.
 			if (settings.drawText)
 			{
-				Rectangle textChangeBounds = textDrawer.expandBoundsToIncludeText(settings.edits.text, mapParts.graph, centersChangedBounds, settings);
+				Rectangle textChangeBounds = textDrawer.expandBoundsToIncludeText(settings.edits.text, centersChangedBounds, settings);
 				replaceBounds = replaceBounds.add(textChangeBounds);
 			}
 		}

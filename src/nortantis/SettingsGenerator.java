@@ -28,8 +28,10 @@ public class SettingsGenerator
 	public static final int maxConcentricWaveCountInEditor = 5;
 	public static final int maxConcentricWaveCountToGenerate = 3;
 	public static final int minRegionCount = 2;
-
-	public static int maxRegionCount(int worldSize)
+	public static int maxRegionCount = 20;
+	/** The maximum number of regions in new, generated settings.
+	 */
+	public static int maxGeneratedRegionCount(int worldSize)
 	{
 		return Math.min(20, Math.max(minRegionCount, worldSize / 200));
 	}
@@ -145,8 +147,7 @@ public class SettingsGenerator
 			settings.landShape = ProbabilityHelper.sampleUniform(rand, Arrays.asList(LandShape.Continents, LandShape.Scattered));
 		}
 
-		int maxRegions = maxRegionCount(settings.worldSize);
-		int rangeSize = maxRegions - minRegionCount;
+		int rangeSize = maxGeneratedRegionCount(settings.worldSize) - minRegionCount;
 		int low = minRegionCount + rangeSize / 4;
 		int high = minRegionCount + (3 * rangeSize) / 4;
 		settings.regionCount = low + rand.nextInt(Math.max(1, high - low + 1));
@@ -312,11 +313,6 @@ public class SettingsGenerator
 		settings.backgroundRandomSeed = seed;
 		settings.frayedBorderSeed = seed;
 		settings.textRandomSeed = seed;
-	}
-
-	public static List<GeneratedDimension> getAllowedDimensions()
-	{
-		return Arrays.asList(GeneratedDimension.presets());
 	}
 
 	public static List<String> getAllBooks()
