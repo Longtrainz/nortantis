@@ -767,7 +767,7 @@ public class NewSettingsDialog extends JDialog
 
 	private void updateRotationWarning()
 	{
-		if (settings != null && settings.rightRotationCount % 2 != 0)
+		if (settings != null && settings.rightRotationCount != 0)
 		{
 			int degrees = settings.rightRotationCount * 90;
 			rotationWarningLabel.setText("The map is rotated " + degrees + " degrees.");
