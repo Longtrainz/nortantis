@@ -388,6 +388,8 @@ public class NewSettingsDialog extends JDialog
 		pathDisplay = new JTextField();
 		pathDisplay.setText(FileHelper.replaceHomeFolderPlaceholder(UserPreferences.getInstance().defaultCustomImagesPath));
 		pathDisplay.setEditable(false);
+		pathDisplay.setMinimumSize(new Dimension(0, pathDisplay.getMinimumSize().height));
+		pathDisplay.setPreferredSize(new Dimension(0, pathDisplay.getPreferredSize().height));
 		organizer.addLabelAndComponentsHorizontal(Translation.get("newSettingsDialog.customImagesFolder.label"), Translation.get("newSettingsDialog.customImagesFolder.help"),
 				Arrays.asList(pathDisplay, changeButton));
 
@@ -435,13 +437,18 @@ public class NewSettingsDialog extends JDialog
 
 	private void updatePathDisplay()
 	{
+		String newText;
 		if (settings != null && settings.customImagesPath != null && !settings.customImagesPath.isEmpty())
 		{
-			pathDisplay.setText(FileHelper.replaceHomeFolderPlaceholder(settings.customImagesPath));
+			newText = FileHelper.replaceHomeFolderPlaceholder(settings.customImagesPath);
 		}
 		else
 		{
-			pathDisplay.setText("");
+			newText = "";
+		}
+		if (!newText.equals(pathDisplay.getText()))
+		{
+			pathDisplay.setText(newText);
 		}
 	}
 
@@ -793,7 +800,6 @@ public class NewSettingsDialog extends JDialog
 		// the preview to render too large and be clipped at the bottom.
 		SwingUtilities.invokeLater(() ->
 		{
-			validate();
 			nortantis.geom.Dimension size = getMapDrawingAreaSize();
 			if (size != null && size.width > 0.0 && size.height > 0.0)
 			{
