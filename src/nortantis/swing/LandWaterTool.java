@@ -64,7 +64,6 @@ public class LandWaterTool extends EditorTool
 	private ActionListener brushActionListener;
 	private DrawModeWidget modeWidget;
 	private JToggleButton newRegionButton;
-	private JLabel newRegionButtonLabel;
 	private RowHider newRegionButtonHider;
 	private JToggleButton roadsButton;
 	private SegmentedButtonWidget brushTypeWidget;
@@ -261,8 +260,8 @@ public class LandWaterTool extends EditorTool
 		{
 			newRegionButton = new JToggleButton(Translation.get("landWaterTool.createNewRegion"));
 			newRegionButton.addActionListener(e -> updateColorControlVisibility());
-			newRegionButtonLabel = GridBagOrganizer.createWrappingLabel("", Translation.get("landWaterTool.createNewRegion.help"));
-			newRegionButtonHider = organizer.addLabelAndComponent(newRegionButtonLabel, newRegionButton, GridBagOrganizer.rowVerticalInset);
+			newRegionButton.setToolTipText(Translation.get("landWaterTool.createNewRegion.help"));
+			newRegionButtonHider = organizer.addLabelAndComponent(new JLabel(""), newRegionButton, GridBagOrganizer.rowVerticalInset);
 		}
 
 		// Color chooser
@@ -556,7 +555,7 @@ public class LandWaterTool extends EditorTool
 		String labelKey = areRegionColorsVisible ? "landWaterTool.createNewRegion" : "landWaterTool.createNewRegion.singleColor";
 		newRegionButton.setText(Translation.get(labelKey));
 		String helpKey = areRegionColorsVisible ? "landWaterTool.createNewRegion.help" : "landWaterTool.createNewRegion.singleColor.help";
-		newRegionButtonLabel.setToolTipText(Translation.get(helpKey));
+		newRegionButton.setToolTipText(Translation.get(helpKey));
 	}
 
 	private void updateColorControlVisibility()
