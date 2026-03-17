@@ -548,19 +548,21 @@ public class IconsTool extends EditorTool
 			{
 				if (isSelected() && modeWidget.isEditMode() && !isMoving && !isScaling && e.getKeyCode() == KeyEvent.VK_CONTROL)
 				{
-					if (e.getID() == KeyEvent.KEY_PRESSED)
-					{
-						addOrRemoveIconHoverHighlightSelection(true);
-						mapEditingPanel.hideIconEditTools();
-						mapEditingPanel.repaint();
-					}
-					else if (e.getID() == KeyEvent.KEY_RELEASED)
-					{
-						addOrRemoveIconHoverHighlightSelection(false);
-						boolean isValidPosition = iconsToEdit.stream().anyMatch(icon -> icon.type == IconType.decorations || !updater.mapParts.iconDrawer.isContentBottomTouchingWater(icon));
-						mapEditingPanel.showIconEditToolsAt(iconsToEdit, isValidPosition);
-						mapEditingPanel.repaint();
-					}
+					updater.doIfMapIsReadyForInteractions(() -> {
+						if (e.getID() == KeyEvent.KEY_PRESSED)
+						{
+							addOrRemoveIconHoverHighlightSelection(true);
+							mapEditingPanel.hideIconEditTools();
+							mapEditingPanel.repaint();
+						}
+						else if (e.getID() == KeyEvent.KEY_RELEASED)
+						{
+							addOrRemoveIconHoverHighlightSelection(false);
+							boolean isValidPosition = iconsToEdit.stream().anyMatch(icon -> icon.type == IconType.decorations || !updater.mapParts.iconDrawer.isContentBottomTouchingWater(icon));
+							mapEditingPanel.showIconEditToolsAt(iconsToEdit, isValidPosition);
+							mapEditingPanel.repaint();
+						}
+					});
 				}
 
 				// Return false to allow other KeyEventDispatchers to process the event
