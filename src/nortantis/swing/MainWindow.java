@@ -707,7 +707,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		});
 
 		createSubMapMenuItem = new JMenuItem(Translation.get("menu.file.createSubMap"));
-		fileMenu.add(createSubMapMenuItem);
+		//fileMenu.add(createSubMapMenuItem); Disabled for version 3.18
 		createSubMapMenuItem.addActionListener(new ActionListener()
 		{
 			@Override
