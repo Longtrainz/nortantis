@@ -2548,7 +2548,10 @@ public class WorldGraph extends VoronoiGraph
 	}
 
 	/**
-	 * Expands the frontier using Voronoi edges. When {@code avoidCorner} is non-null, a neighbor corner is skipped if the predicate returns true for it, unless it equals {@code destination}.
+	 * Expands the frontier of a best-first search by enqueuing unvisited neighbors of {@code node}. Each adjacent corner is added to {@code frontier} unless it is already in {@code frontier} or
+	 * {@code explored}. Two predicates allow callers to prune the search: {@code avoidCorner} skips a neighbor corner if the predicate returns true for it, and {@code avoidEdge} skips a neighbor if
+	 * the Voronoi edge connecting it to {@code node} satisfies the predicate. Both predicates are ignored when the candidate corner equals {@code destination}, ensuring the search can always reach its
+	 * goal regardless of avoidance rules.
 	 */
 	private void expandFrontier(CornerSearchNode node, Set<CornerSearchNode> frontier, Set<CornerSearchNode> explored, Corner destination, Predicate<Corner> avoidCorner, Predicate<Edge> avoidEdge)
 	{
