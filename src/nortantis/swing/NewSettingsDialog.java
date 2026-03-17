@@ -54,6 +54,8 @@ public class NewSettingsDialog extends JDialog
 	MainWindow mainWindow;
 	private JTextField pathDisplay;
 	private JComboBox<String> artPackComboBox;
+	private JLabel rotationWarningLabel;
+	private RowHider rotationWarningHider;
 
 	public NewSettingsDialog(MainWindow mainWindow, MapSettings settingsToKeepThemeFrom)
 	{
@@ -205,6 +207,7 @@ public class NewSettingsDialog extends JDialog
 					{
 						settings.rightRotationCount--;
 					}
+					updateRotationWarning();
 					handleMapChange();
 				}
 			});
@@ -221,6 +224,7 @@ public class NewSettingsDialog extends JDialog
 				public void actionPerformed(ActionEvent e)
 				{
 					settings.rightRotationCount = (settings.rightRotationCount + 1) % 4;
+					updateRotationWarning();
 					handleMapChange();
 				}
 			});
@@ -328,6 +332,11 @@ public class NewSettingsDialog extends JDialog
 
 		customDimPreviewHider = organizer.addLabelAndComponent("", "", customSpinnersPanel, 2);
 		customDimPreviewHider.setVisible(false);
+
+		rotationWarningLabel = new JLabel();
+		rotationWarningLabel.setForeground(new Color(160, 90, 0));
+		rotationWarningHider = organizer.addLabelAndComponent("", "", rotationWarningLabel, 2);
+		rotationWarningHider.setVisible(false);
 
 		dimensionsComboBox.addActionListener(e ->
 		{
@@ -664,6 +673,7 @@ public class NewSettingsDialog extends JDialog
 		booksWidget.checkSelectedBooks(settings.books);
 
 		updatePathDisplay();
+		updateRotationWarning();
 	}
 
 	private MapSettings getSettingsFromGUI()
@@ -753,6 +763,20 @@ public class NewSettingsDialog extends JDialog
 			progressBar.setVisible(false);
 		}
 
+	}
+
+	private void updateRotationWarning()
+	{
+		if (settings != null && settings.rightRotationCount % 2 != 0)
+		{
+			int degrees = settings.rightRotationCount * 90;
+			rotationWarningLabel.setText("The map is rotated " + degrees + " degrees.");
+			rotationWarningHider.setVisible(true);
+		}
+		else
+		{
+			rotationWarningHider.setVisible(false);
+		}
 	}
 
 	public void createMapChangeListener(Component component)

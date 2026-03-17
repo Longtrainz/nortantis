@@ -79,6 +79,7 @@ public class SubMapDialog
 	private JRadioButton customRadio;
 	private int clampedOneXWorldSize;
 	static final int minPolygonsInSubMap = 1000;
+	private static final Color warningMessageColor = new java.awt.Color(160, 90, 0);
 
 	/**
 	 * Computes the clamped 1× world size (polygon count) for a sub-map selection. This matches the default "Match source detail" value shown in the sub-map dialog.
@@ -490,7 +491,7 @@ public class SubMapDialog
 		if (!matchDetailPossible)
 		{
 			JLabel matchDetailDisabledLabel = new JLabel(Translation.get("subMapDialog.step2.matchDetailDisabled", minPolygonsInSubMap));
-			matchDetailDisabledLabel.setForeground(new java.awt.Color(160, 90, 0));
+			matchDetailDisabledLabel.setForeground(warningMessageColor);
 			controlOrganizer.addLeftAlignedComponent(matchDetailDisabledLabel, 0, 4, false);
 		}
 
@@ -520,7 +521,7 @@ public class SubMapDialog
 
 		// Warning shown when Choose mode is selected (indented to match slider).
 		JLabel customWarningLabel = new JLabel(Translation.get("subMapDialog.step2.customWarning"));
-		customWarningLabel.setForeground(new java.awt.Color(160, 90, 0));
+		customWarningLabel.setForeground(warningMessageColor);
 		JPanel customWarningWrapper = new JPanel(new BorderLayout());
 		customWarningWrapper.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0));
 		customWarningWrapper.add(customWarningLabel);
