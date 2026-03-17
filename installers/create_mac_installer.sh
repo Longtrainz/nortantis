@@ -13,7 +13,6 @@ popd
 rm -rf "$inputFolder"
 mkdir "$inputFolder"
 cp "../build/libs/Nortantis.jar" "$inputFolder"
-cp "../assets/internal/taskbar icon.png" "$inputFolder"
 
 jpackage \
 --input "$inputFolder" \

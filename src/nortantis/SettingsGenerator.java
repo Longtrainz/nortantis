@@ -33,7 +33,7 @@ public class SettingsGenerator
 	 */
 	public static int maxGeneratedRegionCount(int worldSize)
 	{
-		return Math.min(20, Math.max(minRegionCount, worldSize / 200));
+		return Math.min(maxRegionCount, Math.max(minRegionCount, worldSize / 200));
 	}
 
 	public static final int minConcentricWaveCountToGenerate = 2;
