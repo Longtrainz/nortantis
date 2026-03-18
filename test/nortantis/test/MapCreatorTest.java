@@ -349,7 +349,10 @@ public class MapCreatorTest
 		Path tempFile = tempDir.resolve(FilenameUtils.getBaseName(settingsFileName) + " copy.nort");
 		settings.writeToFile(tempFile.toString());
 		MapSettings actual = new MapSettings(tempFile.toString());
-		assertEquals(settings, actual);
+		if (!settings.equals(actual))
+		{
+			fail("Settings differ after save/load. Differences:\n" + settings.findDifferences(actual));
+		}
 	}
 
 	@Test
