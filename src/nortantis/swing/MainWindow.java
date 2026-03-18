@@ -1124,6 +1124,12 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		{
 			textSearchDialog.handleLookAndFeelChange();
 		}
+		if (!UserPreferences.getInstance().hideThemeChangedMessage)
+		{
+			UserPreferences.getInstance().hideThemeChangedMessage = SwingHelper.showDismissibleMessage(Translation.get("theme.changed.title"),
+					Translation.get("theme.changed"), new Dimension(400, 100), JOptionPane.INFORMATION_MESSAGE, this);
+			UserPreferences.getInstance().save();
+		}
 	}
 
 	private static void setLookAndFeel(LookAndFeel lookAndFeel)
