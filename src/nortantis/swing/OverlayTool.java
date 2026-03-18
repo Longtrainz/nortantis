@@ -93,6 +93,7 @@ public class OverlayTool extends EditorTool
 	{
 		return switch (Translation.getEffectiveLocale().getLanguage())
 		{
+			case "en" -> OSHelper.isMac() ? -1: 0;
 			case "es" -> -2;
 			case "pt" -> 5;
 			case "ru" -> 5;

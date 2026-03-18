@@ -13,6 +13,7 @@ import nortantis.platform.awt.AwtBridge;
 import nortantis.swing.translation.Translation;
 import nortantis.util.Assets;
 import nortantis.util.GeometryHelper;
+import nortantis.util.OSHelper;
 import nortantis.util.Tuple2;
 
 import javax.swing.*;
@@ -130,7 +131,7 @@ public class LandWaterTool extends EditorTool
 	{
 		return switch (Translation.getEffectiveLocale().getLanguage())
 		{
-			case "de" -> -3;
+			case "de" -> OSHelper.isMac() ? 0 : -3;
 			case "es" -> 3;
 			case "fr" -> 4;
 			case "pt" -> 4;

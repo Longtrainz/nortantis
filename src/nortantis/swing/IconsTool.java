@@ -139,6 +139,7 @@ public class IconsTool extends EditorTool
 	{
 		return switch (Translation.getEffectiveLocale().getLanguage())
 		{
+			case "en" -> OSHelper.isMac() ? -1 : 0;
 			case "de" -> -9;
 			case "pt" -> OSHelper.isLinux() ? -6 : 0;
 			case "fr" -> OSHelper.isLinux() ? -7 : 0;

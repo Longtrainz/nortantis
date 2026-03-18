@@ -2032,6 +2032,11 @@ public class MapSettings implements Serializable
 				// Ubuntu has this font
 				font = Font.create("Z003", FontStyle.fromNumber(Integer.parseInt(parts[1])), Integer.parseInt(parts[2]));
 			}
+			else if (Font.isInstalled("Apple Chancery"))
+			{
+				// Mac has this font
+				font = Font.create("Apple Chancery", FontStyle.fromNumber(Integer.parseInt(parts[1])), Integer.parseInt(parts[2]));
+			}
 			else
 			{
 				// Generic fallback (e.g. Android) - use Serif logical font name, which

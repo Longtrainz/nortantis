@@ -280,7 +280,17 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		getContentPane().setPreferredSize(new Dimension(1400, 780));
 		getContentPane().setLayout(new BorderLayout());
 
-		setIconImage(AwtBridge.toBufferedImage(Assets.readImage(Paths.get(Assets.getAssetsPath(), "internal/taskbar icon.png").toString())));
+		java.awt.image.BufferedImage appIcon = AwtBridge.toBufferedImage(Assets.readImage(Paths.get(Assets.getAssetsPath(), "internal/taskbar icon.png").toString()));
+		setIconImage(appIcon);
+		// Needed for Mac
+		if (java.awt.Taskbar.isTaskbarSupported())
+		{
+			java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar();
+			if (taskbar.isSupported(java.awt.Taskbar.Feature.ICON_IMAGE))
+			{
+				taskbar.setIconImage(appIcon);
+			}
+		}
 		setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 
 		addWindowListener(new WindowAdapter()

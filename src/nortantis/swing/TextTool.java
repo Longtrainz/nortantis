@@ -518,6 +518,7 @@ public class TextTool extends EditorTool
 	{
 		return switch (Translation.getEffectiveLocale().getLanguage())
 		{
+			case "en" -> OSHelper.isMac() ? -1 :0;
 			case "zh" -> -4;
 			case "fr" -> OSHelper.isLinux() ? -1 : -2;
 			case "pt" -> -1;
