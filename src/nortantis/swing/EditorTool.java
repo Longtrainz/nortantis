@@ -96,7 +96,7 @@ public abstract class EditorTool
 	{
 		final int width = 4;
 
-		if (UserPreferences.getInstance().lookAndFeel == LookAndFeel.System)
+		if ((OSHelper.isWindows() || OSHelper.isLinux()) && UserPreferences.getInstance().lookAndFeel == LookAndFeel.System)
 		{
 			toggleButton.setBorder(BorderFactory.createEmptyBorder(width, width, width, width));
 			return;

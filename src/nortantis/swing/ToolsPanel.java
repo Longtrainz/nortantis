@@ -8,6 +8,7 @@ import nortantis.platform.awt.AwtBridge;
 import nortantis.swing.translation.Translation;
 import nortantis.util.Assets;
 import nortantis.util.Logger;
+import nortantis.util.OSHelper;
 
 import javax.swing.*;
 import javax.swing.border.LineBorder;
@@ -360,6 +361,10 @@ public class ToolsPanel extends JPanel
 			shade = 170;
 		}
 		else if (UserPreferences.getInstance().lookAndFeel == LookAndFeel.Light)
+		{
+			shade = 135;
+		}
+		else if (UserPreferences.getInstance().lookAndFeel == LookAndFeel.System && OSHelper.isMac())
 		{
 			shade = 135;
 		}
