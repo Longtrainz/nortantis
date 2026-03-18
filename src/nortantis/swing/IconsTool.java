@@ -141,9 +141,10 @@ public class IconsTool extends EditorTool
 		{
 			case "en" -> OSHelper.isMac() ? -1 : 0;
 			case "de" -> -9;
+			case "es" -> OSHelper.isMac() ? -2 : 0;
+			case "fr" -> OSHelper.isLinux() ? -7 : OSHelper.isMac() ? -2 : 0;
 			case "pt" -> OSHelper.isLinux() ? -6 : 0;
-			case "fr" -> OSHelper.isLinux() ? -7 : 0;
-			case "ru" -> OSHelper.isLinux() ? -2 : 0;
+			case "ru" -> OSHelper.isLinux() ? -2 : OSHelper.isMac() ? -2 : 0;
 			default -> 0;
 		};
 	}

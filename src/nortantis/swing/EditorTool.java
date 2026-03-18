@@ -346,7 +346,7 @@ public abstract class EditorTool
 				case "es" -> 0.85;
 				case "fr" -> 0.8;
 				case "pt" -> 0.85;
-				case "ru" -> 0.65;
+				case "ru" -> 0.8;
 				default -> 1.0;
 			};
 		}

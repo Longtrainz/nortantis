@@ -508,10 +508,32 @@ public class TextTool extends EditorTool
 		{
 			String text = Translation.get("textTool.toolIcon");
 			p.setColor(Color.black);
-			p.setFont(createToolIconFont(34, text));
+
+			p.setFont(createToolIconFont((int)(34 * getBaseFontScale()), text));
 			p.drawString(text, 3 + getXOffSetBasedOnLanguage(), 37);
 		}
 		return icons;
+	}
+
+	private double getBaseFontScale()
+	{
+		String language = Translation.getEffectiveLocale().getLanguage();
+		double baseFontScale;
+		if (OSHelper.isMac())
+		{
+			baseFontScale = switch (language)
+			{
+				case "es" -> 0.85;
+				case "fr" -> 0.9;
+				case "pt" -> 0.85;
+				default -> 1.0;
+			};
+		}
+		else
+		{
+			baseFontScale = 1.0;
+		}
+		return baseFontScale;
 	}
 
 	private int getXOffSetBasedOnLanguage()
