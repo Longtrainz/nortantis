@@ -41,6 +41,7 @@ temp.nort
 *.msi
 *.exe
 *.deb
+/installers/*.pkg
 Nortantis.jar
 .gradle
 build
