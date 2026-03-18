@@ -25,8 +25,7 @@ jpackage \
 --icon "taskbar icon.png" \
 --file-associations file_associations_linux.txt \
 --vendor "Joseph Heydorn" \
---app-version "$nortantis_version" \
---java-options -XX:MaxRAMPercentage=50.0 \
+--app-version   -XX:MaxRAMPercentage=50.0 \
 --java-options -XX:MaxHeapFreeRatio=40 \
 --java-options -XX:MinHeapFreeRatio=20 \
 --java-options -XX:G1PeriodicGCInterval=15000 \
@@ -34,5 +33,4 @@ jpackage \
 --license-file end_user_license_agreement.txt
 
 rm -rf "$inputFolder"
-# rm -f "..\Nortantis.jar"
 

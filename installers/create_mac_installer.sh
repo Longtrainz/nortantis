@@ -38,5 +38,4 @@ jpackage \
 "${sign_args[@]}"
 
 rm -rf "$inputFolder"
-# rm -f "..\Nortantis.jar"
 
