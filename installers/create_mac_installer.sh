@@ -14,6 +14,11 @@ rm -rf "$inputFolder"
 mkdir "$inputFolder"
 cp "../build/libs/Nortantis.jar" "$inputFolder"
 
+sign_args=()
+if [ -n "$MACOS_SIGNING_IDENTITY" ]; then
+  sign_args=(--mac-sign --mac-signing-key-user-name "$MACOS_SIGNING_IDENTITY")
+fi
+
 jpackage \
 --input "$inputFolder" \
 --name "$exeName" \
@@ -29,7 +34,8 @@ jpackage \
 --java-options -XX:MinHeapFreeRatio=20 \
 --java-options -XX:G1PeriodicGCInterval=15000 \
 --java-options -Dfile.encoding=UTF-8 \
---license-file end_user_license_agreement.txt
+--license-file end_user_license_agreement.txt \
+"${sign_args[@]}"
 
 rm -rf "$inputFolder"
 # rm -f "..\Nortantis.jar"

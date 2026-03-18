@@ -18,6 +18,8 @@ import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
@@ -31,6 +33,26 @@ import java.util.concurrent.ExecutionException;
 
 public class SwingHelper
 {
+	public static int getMenuShortcutKeyMask()
+	{
+		return Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+	}
+
+	public static boolean isCommandKeyDown(InputEvent e)
+	{
+		return OSHelper.isMac() ? e.isMetaDown() : e.isControlDown();
+	}
+
+	public static boolean isCommandModifierKeyCode(int keyCode)
+	{
+		return OSHelper.isMac() ? keyCode == KeyEvent.VK_META : keyCode == KeyEvent.VK_CONTROL;
+	}
+
+	public static String getCommandKeyName()
+	{
+		return OSHelper.isMac() ? "\u2318" : Translation.get("key.ctrl");
+	}
+
 	public static final int borderWidthBetweenComponents = 4;
 	// Fonts in Linux are a little bigger, so make the side panels a little wider.
 	public static final int sidePanelPreferredWidth = OSHelper.isLinux() ? 340 : 314;

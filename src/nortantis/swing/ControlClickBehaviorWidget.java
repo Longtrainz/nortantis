@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import nortantis.swing.translation.Translation;
+import nortantis.swing.SwingHelper;
 
 public class ControlClickBehaviorWidget
 {
@@ -55,7 +56,8 @@ public class ControlClickBehaviorWidget
 		container.add(selectModeButton);
 		container.add(unselectModeButton);
 
-		return organizer.addLabelAndComponent(Translation.get("iconsTool.ctrlClickBehavior.label"), Translation.get("iconsTool.ctrlClickBehavior.help"), container);
+		String keyName = SwingHelper.getCommandKeyName();
+		return organizer.addLabelAndComponent(Translation.get("iconsTool.ctrlClickBehavior.label", keyName), Translation.get("iconsTool.ctrlClickBehavior.help", keyName), container);
 	}
 
 	public boolean isSelectMode()

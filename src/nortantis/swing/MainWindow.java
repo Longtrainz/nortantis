@@ -676,7 +676,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		menuBar.add(fileMenu);
 
 		final JMenuItem newRandomMapMenuItem = new JMenuItem(Translation.get("menu.file.newRandomMap"));
-		newRandomMapMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, KeyEvent.CTRL_DOWN_MASK));
+		newRandomMapMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, SwingHelper.getMenuShortcutKeyMask()));
 		fileMenu.add(newRandomMapMenuItem);
 		newRandomMapMenuItem.addActionListener(new ActionListener()
 		{
@@ -728,7 +728,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		});
 
 		final JMenuItem loadSettingsMenuItem = new JMenuItem(Translation.get("menu.file.open"));
-		loadSettingsMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK));
+		loadSettingsMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, SwingHelper.getMenuShortcutKeyMask()));
 		fileMenu.add(loadSettingsMenuItem);
 		loadSettingsMenuItem.addActionListener(new ActionListener()
 		{
@@ -782,7 +782,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		createOrUpdateRecentMapMenuButtons();
 
 		saveMenuItem = new JMenuItem(Translation.get("menu.file.save"));
-		saveMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK));
+		saveMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, SwingHelper.getMenuShortcutKeyMask()));
 		fileMenu.add(saveMenuItem);
 		saveMenuItem.addActionListener(new ActionListener()
 		{
@@ -827,7 +827,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		});
 
 		refreshMenuItem = new JMenuItem(Translation.get("menu.file.refreshImagesAndRedraw"));
-		refreshMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, KeyEvent.CTRL_DOWN_MASK));
+		refreshMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, SwingHelper.getMenuShortcutKeyMask()));
 		fileMenu.add(refreshMenuItem);
 		refreshMenuItem.addActionListener(new ActionListener()
 		{
@@ -845,7 +845,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		undoButton = new JMenuItem(Translation.get("menu.edit.undo"));
 		undoButton.setEnabled(false);
 		editMenu.add(undoButton);
-		undoButton.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_DOWN_MASK));
+		undoButton.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, SwingHelper.getMenuShortcutKeyMask()));
 		undoButton.addActionListener(new ActionListener()
 		{
 			@Override
@@ -864,7 +864,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		redoButton = new JMenuItem(Translation.get("menu.edit.redo"));
 		redoButton.setEnabled(false);
 		editMenu.add(redoButton);
-		redoButton.setAccelerator(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z, ActionEvent.CTRL_MASK | ActionEvent.SHIFT_MASK));
+		redoButton.setAccelerator(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_Z, SwingHelper.getMenuShortcutKeyMask() | ActionEvent.SHIFT_MASK));
 		redoButton.addActionListener(new ActionListener()
 		{
 			@Override
@@ -1039,7 +1039,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		});
 
 		searchTextMenuItem = new JMenuItem(Translation.get("menu.tools.searchText"));
-		searchTextMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK));
+		searchTextMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, SwingHelper.getMenuShortcutKeyMask()));
 		toolsMenu.add(searchTextMenuItem);
 		searchTextMenuItem.addActionListener(new ActionListener()
 		{

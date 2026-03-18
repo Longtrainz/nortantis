@@ -429,7 +429,7 @@ public class IconsTool extends EditorTool
 			JButton copyButton;
 			{
 				copyButton = new JButton(Translation.get("iconsTool.copy"));
-				copyButton.setToolTipText(Translation.get("iconsTool.copy.tooltip"));
+				copyButton.setToolTipText(Translation.get("iconsTool.copy.tooltip", SwingHelper.getCommandKeyName()));
 				// Define the action to perform
 				Action copyAction = new AbstractAction("Copy")
 				{
@@ -444,7 +444,7 @@ public class IconsTool extends EditorTool
 				InputMap inputMap = copyButton.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
 				ActionMap actionMap = copyButton.getActionMap();
 
-				KeyStroke ctrlC = KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK);
+				KeyStroke ctrlC = KeyStroke.getKeyStroke(KeyEvent.VK_C, SwingHelper.getMenuShortcutKeyMask());
 				inputMap.put(ctrlC, "copyAction");
 				actionMap.put("copyAction", copyAction);
 
@@ -461,7 +461,7 @@ public class IconsTool extends EditorTool
 			JButton pasteButton;
 			{
 				pasteButton = new JButton(Translation.get("iconsTool.paste"));
-				pasteButton.setToolTipText(Translation.get("iconsTool.paste.tooltip"));
+				pasteButton.setToolTipText(Translation.get("iconsTool.paste.tooltip", SwingHelper.getCommandKeyName()));
 				// Define the action to perform
 				Action pasteAction = new AbstractAction("Paste")
 				{
@@ -476,7 +476,7 @@ public class IconsTool extends EditorTool
 				InputMap inputMap = pasteButton.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
 				ActionMap actionMap = pasteButton.getActionMap();
 
-				KeyStroke ctrlV = KeyStroke.getKeyStroke(KeyEvent.VK_V, InputEvent.CTRL_DOWN_MASK);
+				KeyStroke ctrlV = KeyStroke.getKeyStroke(KeyEvent.VK_V, SwingHelper.getMenuShortcutKeyMask());
 				inputMap.put(ctrlV, "pasteAction");
 				actionMap.put("pasteAction", pasteAction);
 
@@ -548,7 +548,7 @@ public class IconsTool extends EditorTool
 			@Override
 			public boolean dispatchKeyEvent(KeyEvent e)
 			{
-				if (isSelected() && modeWidget.isEditMode() && !isMoving && !isScaling && e.getKeyCode() == KeyEvent.VK_CONTROL)
+				if (isSelected() && modeWidget.isEditMode() && !isMoving && !isScaling && SwingHelper.isCommandModifierKeyCode(e.getKeyCode()))
 				{
 					updater.doIfMapIsReadyForInteractions(() -> {
 						if (e.getID() == KeyEvent.KEY_PRESSED)
@@ -1803,14 +1803,14 @@ public class IconsTool extends EditorTool
 		{
 			// Not moving or scaling.
 
-			if (!e.isControlDown() && isPress)
+			if (!SwingHelper.isCommandKeyDown(e) && isPress)
 			{
 				mapEditingPanel.clearHighlightedAreas();
 				iconsToEdit.clear();
 				mapEditingPanel.hideIconEditTools();
 			}
 
-			if (e.isControlDown())
+			if (SwingHelper.isCommandKeyDown(e))
 			{
 				List<FreeIcon> selectedIcons = getSelectedIcons(e.getPoint(), controlClickBehavior.isSelectMode() ? null : iconsToEdit);
 				Set<FreeIcon> intersection = new HashSet<>();
@@ -1911,7 +1911,7 @@ public class IconsTool extends EditorTool
 
 					boolean isValidPosition = updated.stream().anyMatch(icon -> icon.type == IconType.decorations || !updater.mapParts.iconDrawer.isContentBottomTouchingWater(icon));
 					mapEditingPanel.showIconEditToolsAt(updated, isValidPosition);
-					if (e.isControlDown())
+					if (SwingHelper.isCommandKeyDown(e))
 					{
 						mapEditingPanel.setHighlightedAreasFromIcons(updated, updater.mapParts.iconDrawer, false);
 					}
@@ -1926,7 +1926,7 @@ public class IconsTool extends EditorTool
 			}
 			else
 			{
-				if (!e.isControlDown())
+				if (!SwingHelper.isCommandKeyDown(e))
 				{
 					boolean isValidPosition = iconsToEdit.stream().anyMatch(icon -> icon.type == IconType.decorations || !updater.mapParts.iconDrawer.isContentBottomTouchingWater(icon));
 					mapEditingPanel.showIconEditToolsAt(iconsToEdit, isValidPosition);
@@ -2005,7 +2005,7 @@ public class IconsTool extends EditorTool
 	@Override
 	protected void handleMouseMovedOnMap(MouseEvent e)
 	{
-		innerHandleMouseMovedOnMap(e.getPoint(), e.isControlDown());
+		innerHandleMouseMovedOnMap(e.getPoint(), SwingHelper.isCommandKeyDown(e));
 	}
 
 	private void innerHandleMouseMovedOnMap(java.awt.Point mouseLocation, boolean isControlDown)
@@ -2115,7 +2115,7 @@ public class IconsTool extends EditorTool
 		}
 		else
 		{
-			highlightHoverIconsAndShowBrush(e.getPoint(), e.isControlDown());
+			highlightHoverIconsAndShowBrush(e.getPoint(), SwingHelper.isCommandKeyDown(e));
 		}
 		handleMousePressOrDrag(e, false);
 	}
@@ -2126,7 +2126,7 @@ public class IconsTool extends EditorTool
 		mapEditingPanel.clearHighlightedCenters();
 		if (iconsToEdit != null && !iconsToEdit.isEmpty())
 		{
-			if (e.isControlDown() || e.getButton() == MouseEvent.BUTTON1)
+			if (SwingHelper.isCommandKeyDown(e) || e.getButton() == MouseEvent.BUTTON1)
 			{
 				mapEditingPanel.setHighlightedAreasFromIcons(new ArrayList<>(iconsToEdit), updater.mapParts.iconDrawer, false);
 			}
