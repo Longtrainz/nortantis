@@ -58,7 +58,6 @@ public class SwingHelper
 			default -> 0;
 		};
 		int total = base + osAddition + uiThemeAddition + languageAddition;
-		System.out.println("Min side panel width:" + total);
 		return total;
 	}
 
