@@ -46,15 +46,15 @@ public class SwingHelper
 		// Fonts in Linux are a little bigger, so make the side panels a little wider.
 		int osAddition = OSHelper.isLinux() ? 26 : 0;
 		LookAndFeel lookAndFeel = UserPreferences.getInstance().lookAndFeel;
-		int uiThemeAddition = (OSHelper.isLinux() || OSHelper.isMac()) && lookAndFeel.equals(LookAndFeel.System) ? 25 : 0;
+		int uiThemeAddition = (OSHelper.isLinux() || OSHelper.isMac()) && lookAndFeel.equals(LookAndFeel.System) ? 20 : 0;
 		String language = Translation.getEffectiveLocale().getLanguage();
 		int languageAddition = switch (language)
 		{
-			case "de" -> 0;
+			case "de" -> 30;
 			case "es" -> 10;
 			case "fr" -> 0;
 			case "pt" -> 10;
-			case "ru" -> 20;
+			case "ru" -> 50;
 			default -> 0;
 		};
 		int total = base + osAddition + uiThemeAddition + languageAddition;
