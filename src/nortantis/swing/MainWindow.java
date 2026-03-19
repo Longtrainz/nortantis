@@ -332,7 +332,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		createMapEditingPanel();
 		createMapUpdater();
 		toolsPanel = new ToolsPanel(this, updater);
-		int toolsPanelWidth = UserPreferences.getInstance().toolsPanelWidth > SwingHelper.sidePanelMinimumWidth ? UserPreferences.getInstance().toolsPanelWidth : SwingHelper.sidePanelPreferredWidth;
+		int toolsPanelWidth = UserPreferences.getInstance().toolsPanelWidth > SwingHelper.sidePanelMinimumWidth ? UserPreferences.getInstance().toolsPanelWidth : SwingHelper.sidePanelMinimumWidth;
 		toolsPanel.setPreferredSize(new Dimension(toolsPanelWidth, toolsPanel.getPreferredSize().height));
 		toolsPanel.setMinimumSize(new Dimension(SwingHelper.sidePanelMinimumWidth, toolsPanel.getMinimumSize().height));
 

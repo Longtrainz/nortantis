@@ -53,7 +53,7 @@ public class SegmentedButtonWidget
 				int width = getWidth();
 				if (width <= 0)
 				{
-					width = (int) (SwingHelper.sidePanelPreferredWidth * 0.6) - 20;
+					width = (int) (SwingHelper.sidePanelMinimumWidth * 0.6) - 20;
 				}
 				int neededHeight = computeWrappedHeight(width);
 				if (neededHeight > pref.height)

@@ -50,7 +50,7 @@ public class ToolsPanel extends JPanel
 				new OverlayTool(mainWindow, null, updater));
 		currentTool = tools.get(0);
 
-		setPreferredSize(new Dimension(SwingHelper.sidePanelPreferredWidth, mainWindow.getContentPane().getHeight()));
+		setPreferredSize(new Dimension(SwingHelper.sidePanelMinimumWidth, mainWindow.getContentPane().getHeight()));
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
 		toolSelectPanel = new JPanel(new FlowLayout());

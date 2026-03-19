@@ -33,6 +33,35 @@ import java.util.concurrent.ExecutionException;
 
 public class SwingHelper
 {
+
+	public static final int borderWidthBetweenComponents = 4;
+
+	public static final int sidePanelMinimumWidth = calcSidePanelMinWidth();
+	public static final int colorPickerLeftPadding = 2;
+	public static final int sidePanelScrollSpeed = 30;
+
+	private static int calcSidePanelMinWidth()
+	{
+		int base = 314;
+		// Fonts in Linux are a little bigger, so make the side panels a little wider.
+		int osAddition = OSHelper.isLinux() ? 26 : 0;
+		LookAndFeel lookAndFeel = UserPreferences.getInstance().lookAndFeel;
+		int uiThemeAddition = (OSHelper.isLinux() || OSHelper.isMac()) && lookAndFeel.equals(LookAndFeel.System) ? 25 : 0;
+		String language = Translation.getEffectiveLocale().getLanguage();
+		int languageAddition = switch (language)
+		{
+			case "de" -> 0;
+			case "es" -> 10;
+			case "fr" -> 0;
+			case "pt" -> 10;
+			case "ru" -> 20;
+			default -> 0;
+		};
+		int total = base + osAddition + uiThemeAddition + languageAddition;
+		System.out.println("Min side panel width:" + total);
+		return total;
+	}
+
 	public static int getMenuShortcutKeyMask()
 	{
 		return Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
@@ -53,12 +82,6 @@ public class SwingHelper
 		return OSHelper.isMac() ? "\u2318" : Translation.get("key.ctrl");
 	}
 
-	public static final int borderWidthBetweenComponents = 4;
-	// Fonts in Linux are a little bigger, so make the side panels a little wider.
-	public static final int sidePanelPreferredWidth = OSHelper.isLinux() ? 340 : 314;
-	public static final int sidePanelMinimumWidth = sidePanelPreferredWidth;
-	public static final int colorPickerLeftPadding = 2;
-	public static final int sidePanelScrollSpeed = 30;
 
 	public static void initializeComboBoxItems(JComboBox<String> comboBox, Collection<String> items, String selectedItem, boolean forceAddSelectedItem)
 	{

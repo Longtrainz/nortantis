@@ -210,7 +210,7 @@ public class GridBagOrganizer
 	{
 		JPanel filler1 = new JPanel();
 		filler1.setLayout(new BoxLayout(filler1, BoxLayout.X_AXIS));
-		filler1.add(Box.createHorizontalStrut((int) (SwingHelper.sidePanelPreferredWidth * (1.0 - componentWidthRatio))));
+		filler1.add(Box.createHorizontalStrut((int) (SwingHelper.sidePanelMinimumWidth * (1.0 - componentWidthRatio))));
 
 		GridBagConstraints lc = new GridBagConstraints();
 		lc.fill = GridBagConstraints.HORIZONTAL;
@@ -222,7 +222,7 @@ public class GridBagOrganizer
 
 		JPanel filler2 = new JPanel();
 		filler2.setLayout(new BoxLayout(filler2, BoxLayout.X_AXIS));
-		filler2.add(Box.createHorizontalStrut((int) (SwingHelper.sidePanelPreferredWidth * componentWidthRatio)));
+		filler2.add(Box.createHorizontalStrut((int) (SwingHelper.sidePanelMinimumWidth * componentWidthRatio)));
 
 		GridBagConstraints cc = new GridBagConstraints();
 		cc.fill = GridBagConstraints.HORIZONTAL;
