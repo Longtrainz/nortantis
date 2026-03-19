@@ -280,7 +280,8 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		getContentPane().setPreferredSize(new Dimension(1400, 780));
 		getContentPane().setLayout(new BorderLayout());
 
-		java.awt.image.BufferedImage appIcon = AwtBridge.toBufferedImage(Assets.readImage(Paths.get(Assets.getAssetsPath(), "internal/taskbar icon medium size.png").toString()));
+		String iconFileName = System.getProperty("os.name", "").toLowerCase().contains("win") ? "taskbar icon.png" : "taskbar icon medium size.png";
+		java.awt.image.BufferedImage appIcon = AwtBridge.toBufferedImage(Assets.readImage(Paths.get(Assets.getAssetsPath(), "internal/" + iconFileName).toString()));
 		setIconImage(appIcon);
 		// Needed for Mac
 		if (java.awt.Taskbar.isTaskbarSupported())
