@@ -283,7 +283,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		String iconFileName = System.getProperty("os.name", "").toLowerCase().contains("win") ? "taskbar icon.png" : "taskbar icon medium size.png";
 		java.awt.image.BufferedImage appIcon = AwtBridge.toBufferedImage(Assets.readImage(Paths.get(Assets.getAssetsPath(), "internal/" + iconFileName).toString()));
 		setIconImage(appIcon);
-		// Needed for Mac
+		// Needed for Mac, at least when running from source.
 		if (java.awt.Taskbar.isTaskbarSupported())
 		{
 			java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar();
@@ -292,6 +292,7 @@ public class MainWindow extends JFrame implements ILoggerTarget
 				taskbar.setIconImage(appIcon);
 			}
 		}
+
 		setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 
 		addWindowListener(new WindowAdapter()
