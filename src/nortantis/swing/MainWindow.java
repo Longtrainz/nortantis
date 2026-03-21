@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import nortantis.CancelledException;
 import nortantis.DebugFlags;
+import nortantis.GameExporter;
 import nortantis.ImageCache;
 import nortantis.MapSettings;
 import nortantis.editor.*;
@@ -775,6 +776,10 @@ public class MainWindow extends JFrame implements ILoggerTarget
 				handleExportHeightmapPressed();
 			}
 		});
+
+		JMenuItem exportForGameMenuItem = new JMenuItem("Export for Game...");
+		fileMenu.add(exportForGameMenuItem);
+		exportForGameMenuItem.addActionListener(e -> handleExportForGamePressed());
 
 		refreshMenuItem = new JMenuItem(Translation.get("menu.file.refreshImagesAndRedraw"));
 		refreshMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, KeyEvent.CTRL_DOWN_MASK));
@@ -1741,6 +1746,58 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		ImageExportDialog dialog = new ImageExportDialog(this, ImageExportType.Heightmap);
 		dialog.setLocationRelativeTo(this);
 		dialog.setVisible(true);
+	}
+
+	private void handleExportForGamePressed()
+	{
+		updater.doWhenMapIsReadyForInteractions(() ->
+		{
+			if (updater.mapParts == null || updater.mapParts.graph == null)
+			{
+				JOptionPane.showMessageDialog(this, "Please generate a map first.", "Export for Game", JOptionPane.WARNING_MESSAGE);
+				return;
+			}
+
+			JFileChooser chooser = new JFileChooser();
+			chooser.setDialogTitle("Choose export folder");
+			chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			chooser.setAcceptAllFileFilterUsed(false);
+
+			if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION)
+			{
+				return;
+			}
+
+			String folderPath = chooser.getSelectedFile().getAbsolutePath();
+
+			SwingWorker<Void, Void> worker = new SwingWorker<>()
+			{
+				@Override
+				protected Void doInBackground()
+				{
+					try
+					{
+						MapSettings currentSettings = getSettingsFromGUI(true);
+						GameExporter exporter = new GameExporter(updater.mapParts.graph, currentSettings);
+						exporter.exportAll(folderPath, mapEditingPanel.mapFromMapCreator);
+					}
+					catch (Exception ex)
+					{
+						SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(MainWindow.this,
+								"Export failed: " + ex.getMessage(), "Export for Game", JOptionPane.ERROR_MESSAGE));
+					}
+					return null;
+				}
+
+				@Override
+				protected void done()
+				{
+					JOptionPane.showMessageDialog(MainWindow.this,
+							"Exported to: " + folderPath, "Export for Game", JOptionPane.INFORMATION_MESSAGE);
+				}
+			};
+			worker.execute();
+		});
 	}
 
 	private void handleCustomImagesPressed()
