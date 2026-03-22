@@ -435,6 +435,15 @@ public abstract class MapUpdater
 			return;
 		}
 
+		// Incremental updates require an existing rendered map to patch. If no draw is currently
+		// in progress and the map is not ready for interactions (e.g., cancel() was called while
+		// opening a new map), mapFromMapCreator will be null and the incremental update would crash.
+		// Drop it — the full draw that follows will redraw everything from scratch.
+		if (updateType == UpdateType.Incremental && !isMapBeingDrawn && !isMapReadyForInteractions)
+		{
+			return;
+		}
+
 		onDrawSubmitted(updateType);
 
 		if (isMapBeingDrawn)
@@ -671,7 +680,8 @@ public abstract class MapUpdater
 
 						if (updateType != UpdateType.ReprocessBooks && !isCanceled)
 						{
-							onFailedToDraw();
+							Exception exception = result != null ? result.exception : null;
+							onFailedToDraw(exception);
 						}
 						currentMapCreator = null;
 						currentUpdate = null;
@@ -729,6 +739,11 @@ public abstract class MapUpdater
 			Logger.println("Map creation cancelled.");
 			return new UpdateResult(null, null, new ArrayList<>());
 		}
+		catch (RuntimeException e)
+		{
+			Logger.printError("Map creation failed.", e);
+			return new UpdateResult(null, null, new ArrayList<>(), e);
+		}
 
 		System.gc();
 		return new UpdateResult(map, null, currentMapCreator.getWarningMessages());
@@ -747,12 +762,21 @@ public abstract class MapUpdater
 		public Image map;
 		public IntRectangle replaceBounds;
 		public List<String> warningMessages;
+		public Exception exception;
 
 		public UpdateResult(Image map, IntRectangle replaceBounds, List<String> warningMessages)
 		{
 			this.map = map;
 			this.replaceBounds = replaceBounds;
 			this.warningMessages = warningMessages;
+		}
+
+		public UpdateResult(Image map, IntRectangle replaceBounds, List<String> warningMessages, Exception exception)
+		{
+			this.map = map;
+			this.replaceBounds = replaceBounds;
+			this.warningMessages = warningMessages;
+			this.exception = exception;
 		}
 	}
 
@@ -768,7 +792,7 @@ public abstract class MapUpdater
 
 	protected abstract void onFinishedDrawingIncremental(boolean anotherDrawIsQueued, int borderPaddingAsDrawn, IntRectangle incrementalChangeArea, List<String> warningMessages);
 
-	protected abstract void onFailedToDraw();
+	protected abstract void onFailedToDraw(Exception exception);
 
 	protected abstract MapEdits getEdits();
 
@@ -1052,7 +1076,7 @@ public abstract class MapUpdater
 		}
 	}
 
-	public void dowWhenMapIsNotDrawing(Runnable action)
+	public void doWhenMapIsNotDrawing(Runnable action)
 	{
 		if (!isMapBeingDrawn)
 		{

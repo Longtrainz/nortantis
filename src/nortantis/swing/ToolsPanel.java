@@ -8,6 +8,7 @@ import nortantis.platform.awt.AwtBridge;
 import nortantis.swing.translation.Translation;
 import nortantis.util.Assets;
 import nortantis.util.Logger;
+import nortantis.util.OSHelper;
 
 import javax.swing.*;
 import javax.swing.border.LineBorder;
@@ -49,7 +50,7 @@ public class ToolsPanel extends JPanel
 				new OverlayTool(mainWindow, null, updater));
 		currentTool = tools.get(0);
 
-		setPreferredSize(new Dimension(SwingHelper.sidePanelPreferredWidth, mainWindow.getContentPane().getHeight()));
+		setPreferredSize(new Dimension(SwingHelper.sidePanelMinimumWidth, mainWindow.getContentPane().getHeight()));
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
 		toolSelectPanel = new JPanel(new FlowLayout());
@@ -216,8 +217,13 @@ public class ToolsPanel extends JPanel
 	{
 		for (EditorTool tool : tools)
 		{
+			if (tool == currentTool)
+			{
+				tool.onSwitchingAway();
+			}
 			tool.onBeforeLoadingNewMap();
 		}
+		mainWindow.mapEditingPanel.clearAllToolSpecificSelectionsAndHighlights();
 	}
 
 	public void getSettingsFromGUI(MapSettings settings)
@@ -307,7 +313,7 @@ public class ToolsPanel extends JPanel
 
 	}
 
-	void enableOrDisableEverything(boolean enable, MapSettings settings)
+	void enableOrDisableEverything(boolean enable, MapSettings settings, boolean forceEnableZoom)
 	{
 		SwingHelper.setEnabled(this, enable);
 
@@ -327,6 +333,10 @@ public class ToolsPanel extends JPanel
 		{
 			// Always enabled
 			displayQualityComboBox.setEnabled(true);
+			if (forceEnableZoom)
+			{
+				zoomComboBox.setEnabled(true);
+			}
 		}
 	}
 
@@ -351,6 +361,10 @@ public class ToolsPanel extends JPanel
 			shade = 170;
 		}
 		else if (UserPreferences.getInstance().lookAndFeel == LookAndFeel.Light)
+		{
+			shade = 135;
+		}
+		else if (UserPreferences.getInstance().lookAndFeel == LookAndFeel.System && OSHelper.isMac())
 		{
 			shade = 135;
 		}

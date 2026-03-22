@@ -37,10 +37,13 @@ temp.nort
 /unit test files/expected image helper tests
 /unit test files/failed image helper tests
 /unit test files/failed maps skia
+/unit test files/failed sub-maps
 *.msi
 *.exe
 *.deb
+/installers/*.pkg
 Nortantis.jar
 .gradle
 build
 .claude
+.DS_Store

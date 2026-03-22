@@ -7,7 +7,6 @@ import nortantis.geom.RotatedRectangle;
 import nortantis.graph.voronoi.Center;
 import nortantis.graph.voronoi.Corner;
 import nortantis.graph.voronoi.Edge;
-import nortantis.graph.voronoi.VoronoiGraph;
 import nortantis.platform.*;
 import nortantis.util.*;
 import org.apache.commons.math3.exception.NoDataException;
@@ -226,7 +225,7 @@ public class TextDrawer
 					drawNameRotated(map, p, graph, name, locations, 0.0, true, null, TextType.Lake);
 				}
 
-				List<River> rivers = findRivers(graph);
+				List<River> rivers = graph.findRivers();
 				for (River river : rivers)
 				{
 					if (river.size() >= riverMinLength && river.getWidth() >= riverMinWidth)
@@ -364,7 +363,7 @@ public class TextDrawer
 		}
 	}
 
-	public Rectangle expandBoundsToIncludeText(List<MapText> mapTexts, WorldGraph graph, Rectangle bounds, MapSettings settings)
+	public Rectangle expandBoundsToIncludeText(List<MapText> mapTexts, Rectangle bounds, MapSettings settings)
 	{
 		if (!settings.drawText)
 		{
@@ -589,137 +588,6 @@ public class TextDrawer
 	/**
 	 * For finding rivers.
 	 */
-	private List<River> findRivers(WorldGraph graph)
-	{
-		List<River> rivers = new ArrayList<>();
-		Set<Corner> riversAlreadyFound = new HashSet<>();
-		for (Corner corner : graph.corners)
-		{
-			if (corner.river > VoronoiGraph.riversThisSizeOrSmallerWillNotBeDrawn && !riversAlreadyFound.contains(corner))
-			{
-				River river = findRiver(riversAlreadyFound, corner);
-
-				riversAlreadyFound.addAll(river.getCorners());
-				rivers.add(river);
-			}
-		}
-
-		return rivers;
-	}
-
-	private River findRiver(Set<Corner> riversAlreadyFound, Corner start)
-	{
-		// First, follow the river in every direction it flows to find its mouth (which is the end of the river that is the widest, which
-		// should be at the ocean).
-		List<Edge> options = new ArrayList<>();
-		for (Edge e : start.protrudes)
-		{
-			if (e.river > VoronoiGraph.riversThisSizeOrSmallerWillNotBeDrawn && e.v0 != null && e.v1 != null)
-			{
-				options.add(e);
-			}
-		}
-		sortByRiverWidth(options);
-		if (options.size() == 0)
-		{
-			// This shouldn't happen because it means a corner is a river but is not connected to an edge that is a river.
-			assert false;
-			return new River();
-		}
-		else if (options.size() == 1)
-		{
-			// start is the head of a river
-			Corner downStream = options.get(0).getOtherCorner(start);
-			return followRiver(riversAlreadyFound, start, downStream);
-		}
-		else
-		{
-			// Follow the two directions that make the widest rivers, then combine them into one river.
-			River river1 = followRiver(riversAlreadyFound, start, options.get(0).getOtherCorner(start));
-			River river2 = followRiver(riversAlreadyFound, start, options.get(1).getOtherCorner(start));
-			river2.reverse();
-			river2.addAll(river1);
-			return river2;
-		}
-
-	}
-
-	/**
-	 * Searches along edges to find corners which are connected by a river. If the river forks, only one direction is followed (the wider
-	 * one).
-	 *
-	 * @param last
-	 *            The search will not go in the direction of this corner.
-	 * @param head
-	 *            The search will go in the direction of this corner.
-	 * @return A set of corners which form a river.
-	 */
-	private River followRiver(Set<Corner> riversAlreadyFound, Corner last, Corner head)
-	{
-		assert last != null;
-		assert head != null;
-		assert !head.equals(last);
-
-		Edge lastToHead = VoronoiGraph.edgeWithCorners(last, head);
-		River result = new River();
-		result.add(lastToHead);
-
-		List<Edge> riverEdges = new ArrayList<>();
-		for (Edge e : head.protrudes)
-		{
-			if (e.isRiver() && e != lastToHead)
-			{
-				riverEdges.add(e);
-			}
-		}
-
-		if (riverEdges.size() == 0)
-		{
-			// Base case. We're at the end of the river.
-			return result;
-		}
-		else
-		{
-			// There are more than 2 river edges connected to head.
-
-			// Sort the river edges by river width.
-			sortByRiverWidth(riverEdges);
-			Edge widest = riverEdges.get(0);
-
-			Corner nextHead = widest.v0 == head ? widest.v1 : widest.v0;
-
-			if (nextHead == null)
-			{
-				// The river goes to the edge of the map.
-				return result;
-			}
-
-			if (riversAlreadyFound.contains(nextHead))
-			{
-				// We've run into another river that has already been found.
-				result.add(widest);
-				return result;
-			}
-
-			result.addAll(followRiver(riversAlreadyFound, head, nextHead));
-			return result;
-		}
-	}
-
-	private void sortByRiverWidth(List<Edge> edges)
-	{
-		if (edges.size() > 1)
-		{
-			Collections.sort(edges, new Comparator<Edge>()
-			{
-				public int compare(Edge e0, Edge e1)
-				{
-					return -Integer.compare(e0.river, e1.river);
-				}
-			});
-		}
-	}
-
 	/**
 	 * Draws the given name to the map with the area around the name drawn from landAndOceanBackground to make it readable when the name is
 	 * drawn on top of mountains or trees.
@@ -747,11 +615,11 @@ public class TextDrawer
 
 			// Use convolution to make a hazy background for the text.
 			float[][] kernel = ImageHelper.getInstance().createGaussianKernel(kernelSize);
-			try (Image haze1 = ImageHelper.getInstance().convolveGrayscale(textBG, kernel, true, false))
+			try (Image haze1 = ImageHelper.getInstance().convolveGrayscale(textBG, kernel, true, true))
 			{
 				// Threshold it and convolve it again to make the haze bigger.
 				ImageHelper.getInstance().threshold(haze1, 1);
-				try (Image haze2 = ImageHelper.getInstance().convolveGrayscale(haze1, kernel, true, false))
+				try (Image haze2 = ImageHelper.getInstance().convolveGrayscale(haze1, kernel, true, true))
 				{
 					ImageHelper.getInstance().combineImagesWithMaskInRegion(map, landAndOceanBackground, haze2,
 							((int) Math.round(textStart.x - textStartDiffInMaskCausedByCurvatureAndSpacing.x)) - padding,

@@ -737,7 +737,7 @@ public class IconDrawer
 		return groupId;
 	}
 
-	private IconType centerIconTypeToIconType(CenterIconType type)
+	public static IconType centerIconTypeToIconType(CenterIconType type)
 	{
 		if (type == CenterIconType.City)
 		{
@@ -759,6 +759,14 @@ public class IconDrawer
 		{
 			throw new IllegalArgumentException("Unable to convert CenterIconType '" + type + "' to an IconType.");
 		}
+	}
+
+	public static CenterIconType iconTypeToCenterIconType(IconType type)
+	{
+		if (type == IconType.mountains) return CenterIconType.Mountain;
+		if (type == IconType.hills) return CenterIconType.Hill;
+		if (type == IconType.sand) return CenterIconType.Dune;
+		throw new IllegalArgumentException("Cannot convert IconType '" + type + "' to a CenterIconType.");
 	}
 
 	public static String chooseNewCityIconName(Set<String> cityNamesToChooseFrom, String oldIconName)
@@ -1965,8 +1973,8 @@ public class IconDrawer
 			int index = Helper.safeAbs(rand.nextInt());
 
 			// Draw the image such that it is centered in the center of c.
-			int x = (int) (loc.x);
-			int y = (int) (loc.y);
+			double x = loc.x;
+			double y = loc.y;
 
 			final double scale = ((meanPolygonWidth * 2.0) / 10.0);
 			x += rand.nextGaussian() * scale;

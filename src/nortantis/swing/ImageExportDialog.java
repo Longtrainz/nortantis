@@ -1,5 +1,6 @@
 package nortantis.swing;
 
+import nortantis.BorderPosition;
 import nortantis.CancelledException;
 import nortantis.ImageCache;
 import nortantis.MapCreator;
@@ -82,7 +83,23 @@ public class ImageExportDialog extends JDialog
 		}
 		String tooltip = Translation.get("imageExport.resolution.help");
 		resolutionSlider.setValue((int) ((type == ImageExportType.Map ? mainWindow.exportResolution : mainWindow.heightmapExportResolution) * 100));
-		organizer.addLabelAndComponent(Translation.get("imageExport.resolution.label"), tooltip, resolutionSlider);
+
+		// Compute the base map pixel dimensions (at 100% resolution) to display in the slider label.
+		MapSettings exportSettings = mainWindow.getSettingsFromGUI(false);
+		final int exportBaseWidth = (exportSettings.rightRotationCount == 1 || exportSettings.rightRotationCount == 3)
+				? exportSettings.generatedHeight : exportSettings.generatedWidth;
+		final int exportBaseHeight = (exportSettings.rightRotationCount == 1 || exportSettings.rightRotationCount == 3)
+				? exportSettings.generatedWidth : exportSettings.generatedHeight;
+		final int borderPaddingPerSide = exportSettings.drawBorder && exportSettings.borderPosition == BorderPosition.Outside_map
+				? exportSettings.borderWidth : 0;
+		SliderWithDisplayedValue resolutionSliderWithDisplay = new SliderWithDisplayedValue(resolutionSlider, value ->
+		{
+			double resolution = value / 100.0;
+			int w = (int) (exportBaseWidth * resolution) + 2 * (int) (borderPaddingPerSide * resolution);
+			int h = (int) (exportBaseHeight * resolution) + 2 * (int) (borderPaddingPerSide * resolution);
+			return w + " \u00d7 " + h;
+		}, null, null);
+		resolutionSliderWithDisplay.addToOrganizer(organizer, Translation.get("imageExport.resolution.label"), tooltip);
 
 		ActionListener radioButtonListener = new ActionListener()
 		{
@@ -277,7 +294,7 @@ public class ImageExportDialog extends JDialog
 				// that we don't risk running out of memory
 				// or end up clearing the image cache while a draw is still
 				// going.
-				mainWindow.updater.dowWhenMapIsNotDrawing(() -> exportMapAndCloseDialog(mainWindow, resolutionSlider.getValue() / 100.0, exportAction, exportPathFinal));
+				mainWindow.updater.doWhenMapIsNotDrawing(() -> exportMapAndCloseDialog(mainWindow, resolutionSlider.getValue() / 100.0, exportAction, exportPathFinal));
 			}
 		});
 		bottomButtonsPanel.add(exportButton);

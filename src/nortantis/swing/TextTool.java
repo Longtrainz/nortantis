@@ -9,9 +9,7 @@ import nortantis.geom.RotatedRectangle;
 import nortantis.platform.Color;
 import nortantis.platform.DrawQuality;
 import nortantis.platform.Font;
-import nortantis.platform.FontStyle;
 import nortantis.platform.awt.AwtBridge;
-import nortantis.swing.translation.TranslatedEnumRenderer;
 import nortantis.swing.translation.Translation;
 import nortantis.util.Assets;
 import nortantis.util.OSHelper;
@@ -135,7 +133,6 @@ public class TextTool extends EditorTool
 				}
 			}
 		});
-		textTypeComboBox.setRenderer(new TranslatedEnumRenderer());
 		textTypeHider = organizer.addLabelAndComponent(Translation.get("textTool.textType.label"), "", textTypeComboBox);
 		textTypeForAdds = TextType.City;
 
@@ -145,7 +142,6 @@ public class TextTool extends EditorTool
 		}
 
 		lineBreakComboBox = new JComboBoxFixed<>();
-		lineBreakComboBox.setRenderer(new TranslatedEnumRenderer());
 		lineBreakHider = organizer.addLabelAndComponent(Translation.get("textTool.lineBreak.label"), "", lineBreakComboBox);
 		for (LineBreak type : LineBreak.values())
 		{
@@ -512,16 +508,39 @@ public class TextTool extends EditorTool
 		{
 			String text = Translation.get("textTool.toolIcon");
 			p.setColor(Color.black);
-			p.setFont(createToolIconFont(34, text));
+
+			p.setFont(createToolIconFont((int)(34 * getBaseFontScale()), text));
 			p.drawString(text, 3 + getXOffSetBasedOnLanguage(), 37);
 		}
 		return icons;
+	}
+
+	private double getBaseFontScale()
+	{
+		String language = Translation.getEffectiveLocale().getLanguage();
+		double baseFontScale;
+		if (OSHelper.isMac())
+		{
+			baseFontScale = switch (language)
+			{
+				case "es" -> 0.85;
+				case "fr" -> 0.9;
+				case "pt" -> 0.85;
+				default -> 1.0;
+			};
+		}
+		else
+		{
+			baseFontScale = 1.0;
+		}
+		return baseFontScale;
 	}
 
 	private int getXOffSetBasedOnLanguage()
 	{
 		return switch (Translation.getEffectiveLocale().getLanguage())
 		{
+			case "en" -> OSHelper.isMac() ? -1 :0;
 			case "zh" -> -4;
 			case "fr" -> OSHelper.isLinux() ? -1 : -2;
 			case "pt" -> -1;
@@ -532,6 +551,24 @@ public class TextTool extends EditorTool
 
 	@Override
 	protected void onAfterShowMap()
+	{
+		updateHighlightsForMousePosition();
+	}
+
+	@Override
+	public void onSwitchingTo()
+	{
+		super.onSwitchingTo();
+		updater.doWhenMapIsReadyForInteractions(() ->
+		{
+			if (isSelected())
+			{
+				updateHighlightsForMousePosition();
+			}
+		});
+	}
+
+	private void updateHighlightsForMousePosition()
 	{
 		if (lastSelected == null)
 		{
@@ -565,7 +602,7 @@ public class TextTool extends EditorTool
 		{
 			// This is differed if the map is currently drawing so that we don't try to generate text while the text drawer is reprocessing
 			// books after a book checkbox was checked.
-			updater.dowWhenMapIsNotDrawing(() ->
+			updater.doWhenMapIsNotDrawing(() ->
 			{
 				if (modeWidget.isDrawMode())
 				{
@@ -866,7 +903,7 @@ public class TextTool extends EditorTool
 	{
 		if (updater != null)
 		{
-			updater.dowWhenMapIsNotDrawing(() ->
+			updater.doWhenMapIsNotDrawing(() ->
 			{
 				if (mainWindow.edits != null && mainWindow.edits.isInitialized())
 				{

@@ -83,18 +83,40 @@ public class OverlayTool extends EditorTool
 		{
 			String text = Translation.get("overlayTool.toolIcon");
 			p.setColor(Color.black);
-			p.setFont(createToolIconFont(19, text));
+			p.setFont(createToolIconFont((int)(19 * getBaseFontScale()), text));
 			p.drawString(text, 4 + getXOffSetBasedOnLanguage(), 48);
 		}
 		return icon;
+	}
+
+	private double getBaseFontScale()
+	{
+		String language = Translation.getEffectiveLocale().getLanguage();
+		double baseFontScale;
+		if (OSHelper.isMac())
+		{
+			baseFontScale = switch (language)
+			{
+				case "es" -> 0.9;
+				case "fr" -> 0.9;
+				default -> 1.0;
+			};
+		}
+		else
+		{
+			baseFontScale = 1.0;
+		}
+		return baseFontScale;
 	}
 
 	private int getXOffSetBasedOnLanguage()
 	{
 		return switch (Translation.getEffectiveLocale().getLanguage())
 		{
-			case "es" -> -2;
-			case "pt" -> 5;
+			case "en" -> OSHelper.isMac() ? -1: 0;
+			case "es" -> OSHelper.isMac() ? -2 : -2;
+			case "fr" -> OSHelper.isMac() ? -2 : 0;
+			case "pt" -> OSHelper.isMac() ? 3 : 5;
 			case "ru" -> 5;
 			default -> 0;
 		};
@@ -156,7 +178,6 @@ public class OverlayTool extends EditorTool
 			overlayScale = overlayScaleBeforeEdit;
 		}
 
-		mapEditingPanel.clearAllToolSpecificSelectionsAndHighlights();
 		clearEditFields();
 		mapEditingPanel.repaint();
 	}
@@ -528,7 +549,6 @@ public class OverlayTool extends EditorTool
 	@Override
 	public void onBeforeLoadingNewMap()
 	{
-		onSwitchingAway();
 	}
 
 	private void handleOverlayImageChange()

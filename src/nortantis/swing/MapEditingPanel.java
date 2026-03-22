@@ -3,6 +3,7 @@ package nortantis.swing;
 import nortantis.*;
 import nortantis.editor.EdgeType;
 import nortantis.editor.FreeIcon;
+import nortantis.geom.IntRectangle;
 import nortantis.geom.Point;
 import nortantis.geom.RotatedRectangle;
 import nortantis.graph.voronoi.Center;
@@ -16,8 +17,11 @@ import nortantis.platform.ImageHelper.ColorizeAlgorithm;
 import nortantis.util.Range;
 import org.imgscalr.Scalr.Method;
 
+import javax.swing.SwingUtilities;
 import java.awt.*;
 import java.awt.Stroke;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
@@ -29,6 +33,7 @@ import java.util.List;
 @SuppressWarnings("serial")
 public class MapEditingPanel extends UnscaledImagePanel
 {
+
 	private final Color highlightEditColor = new Color(255, 227, 74);
 	private final Color waterHighlightColor = new Color(0, 193, 245);
 	private final Color artPackHighlightColor = Color.CYAN;
@@ -41,6 +46,9 @@ public class MapEditingPanel extends UnscaledImagePanel
 	private Collection<Edge> highlightedEdges;
 	private List<List<Point>> polylinesToHighlight;
 	private EdgeType edgeTypeToHighlight;
+	private List<Point> roadControlPointCircles = null;
+	private Point hoveredRoadControlPoint = null;
+	private List<Point> freeHandPreviewPath = null;
 	private boolean highlightLakes;
 	private boolean highlightRivers;
 	public Image mapFromMapCreator;
@@ -79,6 +87,28 @@ public class MapEditingPanel extends UnscaledImagePanel
 	private final double smallIconScale = 0.2;
 	private final double mediumIconScale = 0.4;
 	private final double largeIconScale = 0.6;
+	private Runnable selectionBoxChangeListener;
+	/**
+	 * The rectangular selection box if currently shown, resolution invariant.
+	 */
+	private nortantis.geom.Rectangle selectionBoxRI;
+	// Selection box drag state
+	private BoxSelectHandle selectionBoxDraggedHandle;
+	private nortantis.geom.Point selectionBoxDragStartRI;
+	private nortantis.geom.Point selectionBoxDragOffset;
+	private nortantis.geom.Rectangle selectionBoxRIAtDragStart;
+	/**
+	 * Optional bounding rectangle (RI coords) that constrains the selection box. Null means no constraint.
+	 */
+	private nortantis.geom.Rectangle selectionBoxConstraintsRI;
+	/**
+	 * Locked aspect ratio for the selection box (width / height). 0 means no lock.
+	 */
+	private double selectionBoxLockedAspectRatio;
+	/**
+	 * Maximum allowed aspect ratio for the selection box (width/height or height/width). 0 means no limit.
+	 */
+	private double selectionBoxMaxAspectRatio;
 
 	public MapEditingPanel(BufferedImage image)
 	{
@@ -93,6 +123,44 @@ public class MapEditingPanel extends UnscaledImagePanel
 		zoom = 1.0;
 		resolution = 0.0;
 		polylinesToHighlight = new ArrayList<>();
+
+		addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				onSelectionBoxMousePressed(e);
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				onSelectionBoxMouseReleased(e);
+			}
+
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				onSelectionBoxMouseClicked(e);
+			}
+		});
+		addMouseMotionListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseMoved(MouseEvent e)
+			{
+				if (selectionBoxRI != null)
+				{
+					repaint();
+				}
+			}
+
+			@Override
+			public void mouseDragged(MouseEvent e)
+			{
+				onSelectionBoxMouseDragged(e);
+			}
+		});
 	}
 
 	public void showBrush(java.awt.Point location, int brushDiameter)
@@ -132,6 +200,36 @@ public class MapEditingPanel extends UnscaledImagePanel
 	public void clearHighlightedPolylines()
 	{
 		polylinesToHighlight.clear();
+	}
+
+	public void setRoadControlPointCircles(List<Point> circles)
+	{
+		this.roadControlPointCircles = circles;
+	}
+
+	public void clearRoadControlPointCircles()
+	{
+		this.roadControlPointCircles = null;
+	}
+
+	public void setHoveredRoadControlPoint(Point point)
+	{
+		this.hoveredRoadControlPoint = point;
+	}
+
+	public void clearHoveredRoadControlPoint()
+	{
+		this.hoveredRoadControlPoint = null;
+	}
+
+	public void setFreeHandPreviewPath(List<Point> path)
+	{
+		this.freeHandPreviewPath = path;
+	}
+
+	public void clearFreeHandPreviewPath()
+	{
+		this.freeHandPreviewPath = null;
 	}
 
 	public void setTextBoxToDraw(nortantis.geom.RotatedRectangle line1Bounds, nortantis.geom.RotatedRectangle line2Bounds)
@@ -389,11 +487,6 @@ public class MapEditingPanel extends UnscaledImagePanel
 		processingAreas.clear();
 	}
 
-	public void addHighlightedCenter(Center c)
-	{
-		highlightedCenters.add(c);
-	}
-
 	public void addHighlightedCenters(Collection<Center> centers)
 	{
 		highlightedCenters.addAll(centers);
@@ -403,11 +496,6 @@ public class MapEditingPanel extends UnscaledImagePanel
 	{
 		if (highlightedCenters != null)
 			highlightedCenters.clear();
-	}
-
-	public void addSelectedCenter(Center c)
-	{
-		selectedCenters.add(c);
 	}
 
 	public void addSelectedCenters(Collection<Center> centers)
@@ -521,10 +609,13 @@ public class MapEditingPanel extends UnscaledImagePanel
 			g.setColor(getHighlightColor());
 			drawEdges(g, highlightedEdges);
 			drawPolylines(g);
+			drawRoadControlPoints((Graphics2D) g);
 
 			g.setColor(selectColor);
 			drawCenterOutlines(g, selectedCenters);
 		}
+
+		drawSelectionBox((Graphics2D) g);
 	}
 
 	private void highlightArtPacksIfNeeded(Graphics2D g)
@@ -559,7 +650,6 @@ public class MapEditingPanel extends UnscaledImagePanel
 		}
 		Rectangle editBounds = AwtFactory.toAwtRectangle(iconToEditBounds.scaleAboutOrigin(resolution));
 
-		int padding = (int) (9 * resolution);
 		if (showEditBox)
 		{
 			if (highlightedAreas != null && highlightedAreas.size() != 1)
@@ -601,6 +691,7 @@ public class MapEditingPanel extends UnscaledImagePanel
 			}
 		}
 
+		int padding = (int) (9 * resolution);
 		// Place the image for the scale tool.
 		{
 			BufferedImage scaleIcon;
@@ -832,6 +923,66 @@ public class MapEditingPanel extends UnscaledImagePanel
 		}
 	}
 
+	/**
+	 * Returns the road control-point highlight radius in graph pixels. Used by both drawing and hit-testing so they stay in sync.
+	 */
+	int getRoadControlPointRadiusInGraphPixels()
+	{
+		if (graph == null)
+		{
+			return (int) Math.round(13 * resolution);
+		}
+		// Scale with mean polygon width so circles stay proportional to polygon size as world size
+		// increases, matching the way icons scale. getMeanCenterWidth() is in graph pixels and already
+		// incorporates resolution, so no separate resolution factor is needed.
+		return (int) Math.round(graph.getMeanCenterWidth() * 0.25);
+	}
+
+	private void drawRoadControlPoints(Graphics2D g2)
+	{
+		if ((roadControlPointCircles == null || roadControlPointCircles.isEmpty()) && hoveredRoadControlPoint == null && freeHandPreviewPath == null)
+		{
+			return;
+		}
+
+		RenderingHints prevHints = g2.getRenderingHints();
+		Stroke prevStroke = g2.getStroke();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		int r = getRoadControlPointRadiusInGraphPixels();
+		// Scale stroke width with mean polygon width like the radius, so it thins out at higher world
+		// sizes. The constant 0.065 is calibrated so the stroke is half of its original fixed value
+		// (3 * resolution) at maximum world size.
+		float strokeWidth = (float) (graph.getMeanCenterWidth() * 0.065);
+		g2.setStroke(new BasicStroke(strokeWidth));
+
+		if (roadControlPointCircles != null)
+		{
+			g2.setColor(processingColor);
+			for (Point p : roadControlPointCircles)
+			{
+				g2.drawOval((int) p.x - r, (int) p.y - r, r * 2, r * 2);
+			}
+		}
+
+		if (hoveredRoadControlPoint != null)
+		{
+			g2.setColor(highlightEditColor);
+			int hr = r + Math.max(1, r / 6);
+			g2.drawOval((int) hoveredRoadControlPoint.x - hr, (int) hoveredRoadControlPoint.y - hr, hr * 2, hr * 2);
+		}
+
+		if (freeHandPreviewPath != null && freeHandPreviewPath.size() >= 2)
+		{
+			g2.setColor(highlightEditColor);
+			float d = (float) resolution * 2f;
+			g2.setStroke(new BasicStroke(1.5f * d, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[] { 6f * d, 4f * d }, 0f));
+			drawPolyline(g2, freeHandPreviewPath);
+		}
+
+		g2.setStroke(prevStroke);
+		g2.setRenderingHints(prevHints);
+	}
+
 	private void drawPolyline(Graphics g, List<Point> points)
 	{
 		int[] xPoints = new int[points.size()];
@@ -946,6 +1097,499 @@ public class MapEditingPanel extends UnscaledImagePanel
 		return borderPadding;
 	}
 
+	/**
+	 * Converts a mouse screen point to resolution-invariant coordinates.
+	 */
+	public nortantis.geom.Point screenToRI(java.awt.Point screenPoint)
+	{
+		double graphX = screenPoint.x * osScale / zoom - borderPadding;
+		double graphY = screenPoint.y * osScale / zoom - borderPadding;
+		double res = resolution > 0 ? resolution : 1.0;
+		return new nortantis.geom.Point(graphX / res, graphY / res);
+	}
+
+	/**
+	 * Enables selection box mode. The listener is called whenever the selection box is created or modified by the user.
+	 */
+	public void enableSelectionBox(Runnable onChange)
+	{
+		this.selectionBoxChangeListener = onChange;
+	}
+
+	public boolean isSelectionBoxActive()
+	{
+		return selectionBoxChangeListener != null;
+	}
+
+	public void clearSelectionBox()
+	{
+		this.selectionBoxChangeListener = null;
+		this.selectionBoxRI = null;
+		this.selectionBoxDraggedHandle = null;
+		this.selectionBoxDragStartRI = null;
+		this.selectionBoxRIAtDragStart = null;
+		this.selectionBoxDragOffset = null;
+		this.selectionBoxConstraintsRI = null;
+		this.selectionBoxLockedAspectRatio = 0;
+		this.selectionBoxMaxAspectRatio = 0;
+		repaint();
+	}
+
+	/**
+	 * Sets an optional bounding rectangle (in RI coordinates) that the selection box is clamped to. Pass null to remove the constraint.
+	 */
+	public void setSelectionBoxConstraints(nortantis.geom.Rectangle constraints)
+	{
+		this.selectionBoxConstraintsRI = constraints;
+	}
+
+	/**
+	 * Locks the selection box to a specific aspect ratio (width / height). Pass 0 to unlock.
+	 */
+	public void setSelectionBoxLockedAspectRatio(double ratio)
+	{
+		this.selectionBoxLockedAspectRatio = ratio;
+	}
+
+	/**
+	 * Sets the maximum allowed aspect ratio for the selection box (applies to both width/height and height/width). Pass 0 for no limit.
+	 */
+	public void setSelectionBoxMaxAspectRatio(double maxRatio)
+	{
+		this.selectionBoxMaxAspectRatio = maxRatio;
+	}
+
+	public void setSelectionBoxRI(nortantis.geom.Rectangle rect)
+	{
+		this.selectionBoxRI = rect;
+		repaint();
+	}
+
+	public nortantis.geom.Rectangle getSelectionBoxRI()
+	{
+		return selectionBoxRI;
+	}
+
+	private void onSelectionBoxMousePressed(MouseEvent e)
+	{
+		if (selectionBoxChangeListener == null || !SwingUtilities.isLeftMouseButton(e))
+		{
+			return;
+		}
+		selectionBoxDragStartRI = screenToRI(e.getPoint());
+		selectionBoxRIAtDragStart = selectionBoxRI;
+		selectionBoxDraggedHandle = selectionBoxRI != null ? getSelectionBoxHandleMouseIsIn() : BoxSelectHandle.NONE;
+
+		// Compute the offset from the click point to the edge(s) being moved,
+		// so dragging doesn't snap the edge to the cursor on the first move event.
+		double offsetX = 0, offsetY = 0;
+		if (selectionBoxRIAtDragStart != null && selectionBoxDraggedHandle != BoxSelectHandle.NONE
+				&& selectionBoxDraggedHandle != BoxSelectHandle.CENTER)
+		{
+			double left = selectionBoxRIAtDragStart.x;
+			double top = selectionBoxRIAtDragStart.y;
+			double right = left + selectionBoxRIAtDragStart.width;
+			double bottom = top + selectionBoxRIAtDragStart.height;
+			BoxSelectHandle h = selectionBoxDraggedHandle;
+			if (h == BoxSelectHandle.LEFT || h == BoxSelectHandle.UPPER_LEFT || h == BoxSelectHandle.LOWER_LEFT)
+				offsetX = left - selectionBoxDragStartRI.x;
+			if (h == BoxSelectHandle.RIGHT || h == BoxSelectHandle.UPPER_RIGHT || h == BoxSelectHandle.LOWER_RIGHT)
+				offsetX = right - selectionBoxDragStartRI.x;
+			if (h == BoxSelectHandle.TOP || h == BoxSelectHandle.UPPER_LEFT || h == BoxSelectHandle.UPPER_RIGHT)
+				offsetY = top - selectionBoxDragStartRI.y;
+			if (h == BoxSelectHandle.BOTTOM || h == BoxSelectHandle.LOWER_LEFT || h == BoxSelectHandle.LOWER_RIGHT)
+				offsetY = bottom - selectionBoxDragStartRI.y;
+		}
+		selectionBoxDragOffset = new nortantis.geom.Point(offsetX, offsetY);
+	}
+
+	private void onSelectionBoxMouseDragged(MouseEvent e)
+	{
+		if (selectionBoxChangeListener == null || selectionBoxDragStartRI == null || !SwingUtilities.isLeftMouseButton(e))
+		{
+			return;
+		}
+		nortantis.geom.Point currentRI = screenToRI(e.getPoint());
+		nortantis.geom.Rectangle newBox = computeNewSelectionBox(selectionBoxDraggedHandle, currentRI);
+		if (newBox != null && newBox.width > 0 && newBox.height > 0)
+		{
+			selectionBoxRI = newBox;
+			repaint();
+			selectionBoxChangeListener.run();
+		}
+	}
+
+	private void onSelectionBoxMouseReleased(MouseEvent e)
+	{
+		if (!SwingUtilities.isLeftMouseButton(e))
+		{
+			return;
+		}
+		selectionBoxDraggedHandle = null;
+		selectionBoxDragStartRI = null;
+		selectionBoxRIAtDragStart = null;
+		selectionBoxDragOffset = null;
+	}
+
+	private void onSelectionBoxMouseClicked(MouseEvent e)
+	{
+		if (selectionBoxChangeListener == null || !SwingUtilities.isLeftMouseButton(e) || selectionBoxRI == null)
+		{
+			return;
+		}
+		nortantis.geom.Point clickRI = screenToRI(e.getPoint());
+		if (!selectionBoxRI.contains(clickRI.x, clickRI.y))
+		{
+			selectionBoxRI = null;
+			repaint();
+			selectionBoxChangeListener.run();
+		}
+	}
+
+	/**
+	 * Computes the new selection box rectangle given the handle being dragged and the current mouse position in RI coordinates. Applies aspect
+	 * ratio and bounds constraints. Returns null if the resulting box is degenerate.
+	 */
+	private nortantis.geom.Rectangle computeNewSelectionBox(BoxSelectHandle handle, nortantis.geom.Point currentRI)
+	{
+		// When aspect ratio is locked, edge handles act like CENTER (move the whole box).
+		if (selectionBoxLockedAspectRatio > 0 && handle != null && handle != BoxSelectHandle.NONE && handle != BoxSelectHandle.CENTER
+				&& !handle.isCorner())
+		{
+			handle = BoxSelectHandle.CENTER;
+		}
+
+		if (handle == null || handle == BoxSelectHandle.NONE)
+		{
+			// Draw a new box from scratch.
+			nortantis.geom.Rectangle box;
+			if (selectionBoxLockedAspectRatio > 0)
+			{
+				box = applyAspectRatioConstraint(selectionBoxDragStartRI.x, selectionBoxDragStartRI.y, currentRI.x, currentRI.y);
+			}
+			else
+			{
+				box = nortantis.geom.Rectangle.fromCorners(selectionBoxDragStartRI.x, selectionBoxDragStartRI.y, currentRI.x, currentRI.y);
+			}
+			return clampResizeToConstraints(clampToMaxAspectRatio(box));
+		}
+
+		if (handle == BoxSelectHandle.CENTER)
+		{
+			// Translate the whole box; keep it fully inside the constraints.
+			double dx = currentRI.x - selectionBoxDragStartRI.x;
+			double dy = currentRI.y - selectionBoxDragStartRI.y;
+			nortantis.geom.Rectangle moved = new nortantis.geom.Rectangle(selectionBoxRIAtDragStart.x + dx, selectionBoxRIAtDragStart.y + dy,
+					selectionBoxRIAtDragStart.width, selectionBoxRIAtDragStart.height);
+			return clampMoveToConstraints(moved);
+		}
+
+		// Edge and corner handles: resize.
+		double left = selectionBoxRIAtDragStart.x;
+		double top = selectionBoxRIAtDragStart.y;
+		double right = left + selectionBoxRIAtDragStart.width;
+		double bottom = top + selectionBoxRIAtDragStart.height;
+
+		nortantis.geom.Rectangle result;
+		if (selectionBoxLockedAspectRatio > 0)
+		{
+			// Aspect-ratio-constrained corner resize.
+			double movingX = currentRI.x + selectionBoxDragOffset.x;
+			double movingY = currentRI.y + selectionBoxDragOffset.y;
+			double fixedX, fixedY;
+			if (handle == BoxSelectHandle.UPPER_LEFT)
+			{
+				fixedX = right;
+				fixedY = bottom;
+			}
+			else if (handle == BoxSelectHandle.UPPER_RIGHT)
+			{
+				fixedX = left;
+				fixedY = bottom;
+			}
+			else if (handle == BoxSelectHandle.LOWER_LEFT)
+			{
+				fixedX = right;
+				fixedY = top;
+			}
+			else if (handle == BoxSelectHandle.LOWER_RIGHT)
+			{
+				fixedX = left;
+				fixedY = top;
+			}
+			else
+			{
+				return null;
+			}
+			result = applyAspectRatioConstraint(fixedX, fixedY, movingX, movingY);
+		}
+		else
+		{
+			if (handle == BoxSelectHandle.UPPER_LEFT || handle == BoxSelectHandle.LEFT || handle == BoxSelectHandle.LOWER_LEFT)
+				left = currentRI.x + selectionBoxDragOffset.x;
+			if (handle == BoxSelectHandle.UPPER_RIGHT || handle == BoxSelectHandle.RIGHT || handle == BoxSelectHandle.LOWER_RIGHT)
+				right = currentRI.x + selectionBoxDragOffset.x;
+			if (handle == BoxSelectHandle.UPPER_LEFT || handle == BoxSelectHandle.TOP || handle == BoxSelectHandle.UPPER_RIGHT)
+				top = currentRI.y + selectionBoxDragOffset.y;
+			if (handle == BoxSelectHandle.LOWER_LEFT || handle == BoxSelectHandle.BOTTOM || handle == BoxSelectHandle.LOWER_RIGHT)
+				bottom = currentRI.y + selectionBoxDragOffset.y;
+			result = nortantis.geom.Rectangle.fromCorners(left, top, right, bottom);
+		}
+
+		return clampResizeToConstraints(clampToMaxAspectRatio(result));
+	}
+
+	/**
+	 * Returns a new rectangle with corners at (fixedX, fixedY) and (movingX, movingY) adjusted so that width/height equals
+	 * selectionBoxLockedAspectRatio. Uses whichever axis has the larger displacement.
+	 */
+	private nortantis.geom.Rectangle applyAspectRatioConstraint(double fixedX, double fixedY, double movingX, double movingY)
+	{
+		double dx = movingX - fixedX;
+		double dy = movingY - fixedY;
+		double ratio = selectionBoxLockedAspectRatio;
+		double signX = dx >= 0 ? 1 : -1;
+		double signY = dy >= 0 ? 1 : -1;
+		double absDx = Math.abs(dx);
+		double absDy = Math.abs(dy);
+		if (absDx > absDy * ratio)
+		{
+			// X-axis dominates: derive height from width.
+			movingY = fixedY + signY * (absDx / ratio);
+		}
+		else
+		{
+			// Y-axis dominates: derive width from height.
+			movingX = fixedX + signX * (absDy * ratio);
+		}
+		return nortantis.geom.Rectangle.fromCorners(fixedX, fixedY, movingX, movingY);
+	}
+
+	/**
+	 * Returns box unchanged if it is within selectionBoxMaxAspectRatio, or returns the current selectionBoxRI (no-op) if it would exceed it.
+	 */
+	private nortantis.geom.Rectangle clampToMaxAspectRatio(nortantis.geom.Rectangle box)
+	{
+		if (selectionBoxMaxAspectRatio <= 0 || box == null)
+		{
+			return box;
+		}
+		if (box.width / box.height > selectionBoxMaxAspectRatio || box.height / box.width > selectionBoxMaxAspectRatio)
+		{
+			return selectionBoxRI;
+		}
+		return box;
+	}
+
+	/**
+	 * Clips a resized/newly-drawn selection box to selectionBoxConstraintsRI. Returns null if the intersection is empty.
+	 */
+	private nortantis.geom.Rectangle clampResizeToConstraints(nortantis.geom.Rectangle box)
+	{
+		if (selectionBoxConstraintsRI == null || box == null)
+		{
+			return box;
+		}
+		nortantis.geom.Rectangle c = selectionBoxConstraintsRI;
+		double left = Math.max(c.x, box.x);
+		double top = Math.max(c.y, box.y);
+		double right = Math.min(c.x + c.width, box.x + box.width);
+		double bottom = Math.min(c.y + c.height, box.y + box.height);
+		if (right > left && bottom > top)
+		{
+			return new nortantis.geom.Rectangle(left, top, right - left, bottom - top);
+		}
+		return null;
+	}
+
+	/**
+	 * Translates a moved selection box so it stays fully inside selectionBoxConstraintsRI, without changing its size.
+	 */
+	private nortantis.geom.Rectangle clampMoveToConstraints(nortantis.geom.Rectangle box)
+	{
+		if (selectionBoxConstraintsRI == null || box == null)
+		{
+			return box;
+		}
+		nortantis.geom.Rectangle c = selectionBoxConstraintsRI;
+		double x = Math.max(c.x, Math.min(c.x + c.width - box.width, box.x));
+		double y = Math.max(c.y, Math.min(c.y + c.height - box.height, box.y));
+		return new nortantis.geom.Rectangle(x, y, box.width, box.height);
+	}
+
+	final double boxSelectHandleSizePercent = 0.2;
+	private void drawSelectionBox(Graphics2D g2)
+	{
+		if (selectionBoxRI == null)
+		{
+			return;
+		}
+		IntRectangle selectionBoxScaled = getSelectionBoxScaledByResolution();
+		int x = selectionBoxScaled.x;
+		int y = selectionBoxScaled.y;
+		int width = selectionBoxScaled.width;
+		int height = selectionBoxScaled.height;
+
+		// Draw corner/edge handles.
+		g2.setColor(processingColor);
+		g2.setStroke(new BasicStroke(1.5f));
+		BoxSelectHandle boxHandle = getSelectionBoxHandleMouseIsIn();
+
+		// When the aspect ratio is locked, edge handles are disabled: treat them as CENTER for highlight purposes.
+		boolean aspectRatioLocked = selectionBoxLockedAspectRatio > 0;
+		BoxSelectHandle effectiveHandle = boxHandle;
+		if (aspectRatioLocked && effectiveHandle != null && !effectiveHandle.isCorner()
+				&& effectiveHandle != BoxSelectHandle.NONE && effectiveHandle != BoxSelectHandle.CENTER)
+		{
+			effectiveHandle = BoxSelectHandle.CENTER;
+		}
+
+		if (effectiveHandle != null && (effectiveHandle == BoxSelectHandle.NONE || effectiveHandle == BoxSelectHandle.CENTER || effectiveHandle.isCorner()))
+		{
+			for (BoxSelectHandle handle : new BoxSelectHandle[] { BoxSelectHandle.UPPER_LEFT, BoxSelectHandle.UPPER_RIGHT, BoxSelectHandle.LOWER_LEFT, BoxSelectHandle.LOWER_RIGHT })
+			{
+				Rectangle loc = getSelectionBoxHandleLocation(handle);
+				g2.drawRect(loc.x, loc.y, loc.width, loc.height);
+			}
+		}
+		else
+		{
+			if (effectiveHandle != null && effectiveHandle != BoxSelectHandle.NONE)
+			{
+				// For top, bottom, and sides, just highlight the area the handle is in.
+				Rectangle rect = getSelectionBoxHandleLocation(effectiveHandle);
+				if (rect != null)
+				{
+					g2.drawRect(rect.x, rect.y, rect.width, rect.height);
+				}
+			}
+		}
+
+		// Semi-transparent blue fill
+		g2.setColor(new Color(0, 120, 255, 50));
+		g2.fillRect(x, y, width, height);
+
+		// Yellow border
+		Stroke prevStroke = g2.getStroke();
+		g2.setStroke(new BasicStroke(2.0f));
+		g2.setColor(highlightEditColor);
+		g2.drawRect(x, y, width, height);
+		g2.setStroke(prevStroke);
+
+		// Move icon centered in the box, only if it fits within the CENTER handle area
+		Rectangle centerHandle = getSelectionBoxHandleLocation(BoxSelectHandle.CENTER);
+		if (moveIconScaledSmall != null && centerHandle != null
+				&& moveIconScaledSmall.getWidth() <= centerHandle.width
+				&& moveIconScaledSmall.getHeight() <= centerHandle.height)
+		{
+			int iconX = centerHandle.x + (int) Math.round(centerHandle.width / 2.0) - (int) Math.round(moveIconScaledSmall.getWidth() / 2.0);
+			int iconY = centerHandle.y + (int) Math.round(centerHandle.height / 2.0) - (int) Math.round(moveIconScaledSmall.getHeight() / 2.0);
+			g2.drawImage(moveIconScaledSmall, iconX, iconY, null);
+		}
+	}
+
+	private IntRectangle getSelectionBoxScaledByResolution()
+	{
+		int x = (int) (selectionBoxRI.x * resolution);
+		int y = (int) (selectionBoxRI.y * resolution);
+		int width = (int) (selectionBoxRI.width * resolution);
+		int height = (int) (selectionBoxRI.height * resolution);
+		return new IntRectangle(x, y, width, height);
+	}
+
+	public BoxSelectHandle getSelectionBoxHandleMouseIsIn()
+	{
+		if (selectionBoxRI == null)
+		{
+			return BoxSelectHandle.NONE;
+		}
+
+		java.awt.Point screenPosition = getMousePosition();
+		if (screenPosition == null)
+		{
+			return BoxSelectHandle.NONE;
+		}
+		// Convert screen/component coords to map-pixel coords (RI * resolution),
+		// which is what getSelectionBoxHandleLocation returns.
+		nortantis.geom.Point riPoint = screenToRI(screenPosition);
+		double res = resolution > 0 ? resolution : 1.0;
+		java.awt.Point mousePosition = new java.awt.Point((int) (riPoint.x * res), (int) (riPoint.y * res));
+
+		for (BoxSelectHandle handle : BoxSelectHandle.values())
+		{
+			Rectangle location = getSelectionBoxHandleLocation(handle);
+			if (location != null && location.contains(mousePosition))
+			{
+				return handle;
+			}
+		}
+		return BoxSelectHandle.NONE;
+	}
+
+	private Rectangle getSelectionBoxHandleLocation(BoxSelectHandle boxHandle)
+	{
+		if (boxHandle == null || boxHandle == BoxSelectHandle.NONE)
+		{
+			return null;
+		}
+		IntRectangle selectionBoxScaled = getSelectionBoxScaledByResolution();
+		int x = selectionBoxScaled.x;
+		int y = selectionBoxScaled.y;
+		int width = selectionBoxScaled.width;
+		int height = selectionBoxScaled.height;
+		final int handleWidth = (int) (width * boxSelectHandleSizePercent);
+		final int handleHeight = (int) (height * boxSelectHandleSizePercent);
+
+		if (boxHandle == BoxSelectHandle.UPPER_LEFT)
+		{
+			return new Rectangle(x, y, handleWidth, handleHeight);
+		}
+		if (boxHandle == BoxSelectHandle.UPPER_RIGHT)
+		{
+			return new Rectangle(x + (width - handleWidth), y, handleWidth, handleHeight);
+		}
+		if (boxHandle == BoxSelectHandle.LOWER_LEFT)
+		{
+			return new Rectangle(x, y + (height - handleHeight), handleWidth, handleHeight);
+		}
+		if (boxHandle == BoxSelectHandle.LOWER_RIGHT)
+		{
+			return new Rectangle(x + (width - handleWidth), y + (height - handleHeight), handleWidth, handleHeight);
+		}
+		if (boxHandle == BoxSelectHandle.TOP)
+		{
+			return new Rectangle(x + handleWidth, y, width - handleWidth * 2, handleHeight);
+		}
+		if (boxHandle == BoxSelectHandle.LEFT)
+		{
+			return new Rectangle(x, y + handleHeight, handleWidth, height - handleHeight * 2);
+		}
+		if (boxHandle == BoxSelectHandle.RIGHT)
+		{
+			return new Rectangle(x + (width - handleWidth), y + handleHeight, handleWidth, height - handleHeight * 2);
+		}
+		if (boxHandle == BoxSelectHandle.BOTTOM)
+		{
+			return new Rectangle(x + handleWidth, y + (height - handleHeight), width - handleWidth * 2, handleHeight);
+		}
+		if (boxHandle == BoxSelectHandle.CENTER)
+		{
+			return new Rectangle(x + handleWidth, y + handleHeight, width - handleWidth * 2, height - handleHeight * 2);
+		}
+		return null;
+	}
+
+
+	public enum BoxSelectHandle
+	{
+		NONE, LEFT, RIGHT, TOP, BOTTOM, UPPER_LEFT, UPPER_RIGHT, LOWER_LEFT, LOWER_RIGHT, CENTER;
+
+		public boolean isCorner()
+		{
+			return this == BoxSelectHandle.UPPER_LEFT || this == BoxSelectHandle.UPPER_RIGHT ||  this == BoxSelectHandle.LOWER_LEFT || this == BoxSelectHandle.LOWER_RIGHT;
+		}
+	}
+
 	public void clearAllSelectionsAndHighlights()
 	{
 		clearAllToolSpecificSelectionsAndHighlights();
@@ -963,6 +1607,9 @@ public class MapEditingPanel extends UnscaledImagePanel
 		clearHighlightedCenters();
 		clearHighlightedEdges();
 		clearHighlightedPolylines();
+		clearRoadControlPointCircles();
+		clearHoveredRoadControlPoint();
+		clearFreeHandPreviewPath();
 		hideBrush();
 		clearHighlightedAreas();
 		clearProcessingAreas();

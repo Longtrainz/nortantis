@@ -1,7 +1,9 @@
 package nortantis.swing;
 
+import nortantis.GeneratedDimension;
 import nortantis.IconType;
 import nortantis.ImageCache;
+import nortantis.LandShape;
 import nortantis.MapSettings;
 import nortantis.SettingsGenerator;
 import nortantis.editor.MapUpdater;
@@ -11,7 +13,6 @@ import nortantis.platform.Image;
 import nortantis.platform.ImageHelper;
 import nortantis.platform.awt.AwtBridge;
 import nortantis.swing.ThemePanel.LandColoringMethod;
-import nortantis.swing.translation.TranslatedEnumRenderer;
 import nortantis.swing.translation.Translation;
 import nortantis.util.*;
 import org.apache.commons.lang3.StringUtils;
@@ -28,15 +29,21 @@ import java.util.List;
 public class NewSettingsDialog extends JDialog
 {
 	JSlider worldSizeSlider;
-	JSlider edgeLandToWaterProbSlider;
-	JSlider centerLandToWaterProbSlider;
-	private JComboBox<String> dimensionsComboBox;
+	private JSpinner customWidthSpinner;
+	private JSpinner customHeightSpinner;
+	private JLabel customDimPreviewLabel;
+	private JPanel customSpinnersPanel;
+	private RowHider customDimPreviewHider;
+	private JComboBox<LandShape> landShapeComboBox;
+	private JSlider regionCountSlider;
+	private SliderWithDisplayedValue regionCountSliderWithDisplay;
+	private JComboBox<GeneratedDimension> dimensionsComboBox;
 	BooksWidget booksWidget;
 	MapSettings settings;
 	private JProgressBar progressBar;
 	private MapUpdater updater;
 	private MapEditingPanel mapEditingPanel;
-	private Dimension defaultSize = new Dimension(900, 750);
+	private Dimension defaultSize = new Dimension(955, 750);
 	private int amountToSubtractFromLeftAndRightPanels = 40;
 	private Timer progressBarTimer;
 	public final double cityFrequencySliderScale = 100.0 / SettingsGenerator.maxCityProbability;
@@ -47,6 +54,8 @@ public class NewSettingsDialog extends JDialog
 	MainWindow mainWindow;
 	private JTextField pathDisplay;
 	private JComboBox<String> artPackComboBox;
+	private JLabel rotationWarningLabel;
+	private RowHider rotationWarningHider;
 
 	public NewSettingsDialog(MainWindow mainWindow, MapSettings settingsToKeepThemeFrom)
 	{
@@ -198,6 +207,7 @@ public class NewSettingsDialog extends JDialog
 					{
 						settings.rightRotationCount--;
 					}
+					updateRotationWarning();
 					handleMapChange();
 				}
 			});
@@ -214,6 +224,7 @@ public class NewSettingsDialog extends JDialog
 				public void actionPerformed(ActionEvent e)
 				{
 					settings.rightRotationCount = (settings.rightRotationCount + 1) % 4;
+					updateRotationWarning();
 					handleMapChange();
 				}
 			});
@@ -286,13 +297,54 @@ public class NewSettingsDialog extends JDialog
 		JPanel leftPanel = organizer.panel;
 		generatorSettingsPanel.add(leftPanel);
 
-		dimensionsComboBox = new JComboBox<>();
-		for (String dimension : SettingsGenerator.getAllowedDimensions())
+		dimensionsComboBox = new JComboBox<GeneratedDimension>();
+		for (GeneratedDimension dimension : GeneratedDimension.values())
 		{
 			dimensionsComboBox.addItem(dimension);
 		}
-		createMapChangeListener(dimensionsComboBox);
 		organizer.addLabelAndComponent(Translation.get("newSettingsDialog.dimensions.label"), Translation.get("newSettingsDialog.dimensions.help"), dimensionsComboBox);
+
+		customWidthSpinner = new JSpinner(new SpinnerNumberModel(16, 1, 32768, 1));
+		customHeightSpinner = new JSpinner(new SpinnerNumberModel(9, 1, 32768, 1));
+		Dimension spinnerDim = new Dimension(70, customWidthSpinner.getPreferredSize().height);
+		customWidthSpinner.setPreferredSize(spinnerDim);
+		customWidthSpinner.setMaximumSize(spinnerDim);
+		customHeightSpinner.setPreferredSize(spinnerDim);
+		customHeightSpinner.setMaximumSize(spinnerDim);
+
+		customDimPreviewLabel = new JLabel();
+		customWidthSpinner.addChangeListener(e -> clearMapPreview());
+		customHeightSpinner.addChangeListener(e -> clearMapPreview());
+		createMapChangeListener(customWidthSpinner);
+		createMapChangeListener(customHeightSpinner);
+		customWidthSpinner.addChangeListener(e -> updateCustomDimPreview());
+		customHeightSpinner.addChangeListener(e -> updateCustomDimPreview());
+		updateCustomDimPreview();
+
+		// Spinners and preview label share a row that appears only when Custom is selected.
+		customSpinnersPanel = new JPanel();
+		customSpinnersPanel.setLayout(new BoxLayout(customSpinnersPanel, BoxLayout.X_AXIS));
+		customSpinnersPanel.add(customWidthSpinner);
+		customSpinnersPanel.add(new JLabel(" \u00d7 "));
+		customSpinnersPanel.add(customHeightSpinner);
+		customSpinnersPanel.add(Box.createHorizontalStrut(8));
+		customSpinnersPanel.add(customDimPreviewLabel);
+
+		customDimPreviewHider = organizer.addLabelAndComponent("", "", customSpinnersPanel, 2);
+		customDimPreviewHider.setVisible(false);
+
+		rotationWarningLabel = new JLabel();
+		rotationWarningLabel.setForeground(new Color(160, 90, 0));
+		rotationWarningHider = organizer.addLabelAndComponent("", "", rotationWarningLabel, 2);
+		rotationWarningHider.setVisible(false);
+
+		dimensionsComboBox.addActionListener(e ->
+		{
+			boolean isCustom = dimensionsComboBox.getSelectedItem() == GeneratedDimension.Custom;
+			customDimPreviewHider.setVisible(isCustom);
+			clearMapPreview();
+			handleMapChange();
+		});
 
 		worldSizeSlider = new JSlider();
 		worldSizeSlider.setSnapToTicks(true);
@@ -305,39 +357,23 @@ public class NewSettingsDialog extends JDialog
 		createMapChangeListener(worldSizeSlider);
 		organizer.addLabelAndComponent(Translation.get("newSettingsDialog.worldSize.label"), Translation.get("newSettingsDialog.worldSize.help"), worldSizeSlider);
 
-		edgeLandToWaterProbSlider = new JSlider();
-		edgeLandToWaterProbSlider.setValue(70);
-		edgeLandToWaterProbSlider.setPaintTicks(true);
-		edgeLandToWaterProbSlider.setPaintLabels(true);
-		edgeLandToWaterProbSlider.setMinorTickSpacing(25);
-		edgeLandToWaterProbSlider.setMajorTickSpacing(25);
+		landShapeComboBox = new JComboBox<LandShape>();
+		for (LandShape shape : LandShape.values())
 		{
-			Hashtable<Integer, JLabel> labelTable = new Hashtable<Integer, JLabel>();
-			for (int i = edgeLandToWaterProbSlider.getMinimum(); i < edgeLandToWaterProbSlider.getMaximum() + 1; i += edgeLandToWaterProbSlider.getMajorTickSpacing())
-			{
-				labelTable.put(i, new JLabel(Double.toString(i / 100.0)));
-			}
-			edgeLandToWaterProbSlider.setLabelTable(labelTable);
+			landShapeComboBox.addItem(shape);
 		}
-		createMapChangeListener(edgeLandToWaterProbSlider);
-		organizer.addLabelAndComponent(Translation.get("newSettingsDialog.edgeLandProbability.label"), Translation.get("newSettingsDialog.edgeLandProbability.help"), edgeLandToWaterProbSlider);
+		createMapChangeListener(landShapeComboBox);
+		organizer.addLabelAndComponent(Translation.get("newSettingsDialog.landShape.label"), Translation.get("newSettingsDialog.landShape.help"), landShapeComboBox);
 
-		centerLandToWaterProbSlider = new JSlider();
-		centerLandToWaterProbSlider.setValue(70);
-		centerLandToWaterProbSlider.setPaintTicks(true);
-		centerLandToWaterProbSlider.setPaintLabels(true);
-		centerLandToWaterProbSlider.setMinorTickSpacing(25);
-		centerLandToWaterProbSlider.setMajorTickSpacing(25);
-		{
-			Hashtable<Integer, JLabel> labelTable = new Hashtable<Integer, JLabel>();
-			for (int i = centerLandToWaterProbSlider.getMinimum(); i < centerLandToWaterProbSlider.getMaximum() + 1; i += centerLandToWaterProbSlider.getMajorTickSpacing())
-			{
-				labelTable.put(i, new JLabel(Double.toString(i / 100.0)));
-			}
-			centerLandToWaterProbSlider.setLabelTable(labelTable);
-		}
-		createMapChangeListener(centerLandToWaterProbSlider);
-		organizer.addLabelAndComponent(Translation.get("newSettingsDialog.centerLandProbability.label"), Translation.get("newSettingsDialog.centerLandProbability.help"), centerLandToWaterProbSlider);
+		regionCountSlider = new JSlider();
+		regionCountSlider.setMinimum(SettingsGenerator.minRegionCount);
+		regionCountSlider.setMaximum(SettingsGenerator.maxRegionCount);
+		regionCountSlider.setValue(3);
+		regionCountSlider.setSnapToTicks(true);
+		regionCountSlider.setMajorTickSpacing(1);
+		createMapChangeListener(regionCountSlider);
+		regionCountSliderWithDisplay = new SliderWithDisplayedValue(regionCountSlider);
+		regionCountSliderWithDisplay.addToOrganizer(organizer, Translation.get("newSettingsDialog.regionCount.label"), Translation.get("newSettingsDialog.regionCount.help"));
 
 		landColoringMethodComboBox = new JComboBox<LandColoringMethod>();
 		for (LandColoringMethod method : LandColoringMethod.values())
@@ -345,7 +381,6 @@ public class NewSettingsDialog extends JDialog
 			landColoringMethodComboBox.addItem(method);
 		}
 
-		landColoringMethodComboBox.setRenderer(new TranslatedEnumRenderer());
 		createMapChangeListener(landColoringMethodComboBox);
 		organizer.addLabelAndComponent(Translation.get("theme.landColoringMethod.label"), Translation.get("theme.landColoringMethod.help"), landColoringMethodComboBox);
 
@@ -353,6 +388,8 @@ public class NewSettingsDialog extends JDialog
 		pathDisplay = new JTextField();
 		pathDisplay.setText(FileHelper.replaceHomeFolderPlaceholder(UserPreferences.getInstance().defaultCustomImagesPath));
 		pathDisplay.setEditable(false);
+		pathDisplay.setMinimumSize(new Dimension(0, pathDisplay.getMinimumSize().height));
+		pathDisplay.setPreferredSize(new Dimension(0, pathDisplay.getPreferredSize().height));
 		organizer.addLabelAndComponentsHorizontal(Translation.get("newSettingsDialog.customImagesFolder.label"), Translation.get("newSettingsDialog.customImagesFolder.help"),
 				Arrays.asList(pathDisplay, changeButton));
 
@@ -381,6 +418,7 @@ public class NewSettingsDialog extends JDialog
 
 		organizer.addLeftAlignedComponent(Box.createRigidArea(new Dimension((defaultSize.width / 2) - amountToSubtractFromLeftAndRightPanels, 0)));
 
+		organizer.addHorizontalSpacerRowToHelpComponentAlignment(0.66);
 		organizer.addVerticalFillerRow();
 	}
 
@@ -399,13 +437,18 @@ public class NewSettingsDialog extends JDialog
 
 	private void updatePathDisplay()
 	{
+		String newText;
 		if (settings != null && settings.customImagesPath != null && !settings.customImagesPath.isEmpty())
 		{
-			pathDisplay.setText(FileHelper.replaceHomeFolderPlaceholder(settings.customImagesPath));
+			newText = FileHelper.replaceHomeFolderPlaceholder(settings.customImagesPath);
 		}
 		else
 		{
-			pathDisplay.setText("");
+			newText = "";
+		}
+		if (!newText.equals(pathDisplay.getText()))
+		{
+			pathDisplay.setText(newText);
 		}
 	}
 
@@ -464,6 +507,7 @@ public class NewSettingsDialog extends JDialog
 
 		organizer.addLeftAlignedComponent(Box.createRigidArea(new Dimension((defaultSize.width / 2) - amountToSubtractFromLeftAndRightPanels, 0)));
 
+		organizer.addHorizontalSpacerRowToHelpComponentAlignment(0.66);
 		organizer.addVerticalFillerRow();
 	}
 
@@ -565,9 +609,16 @@ public class NewSettingsDialog extends JDialog
 			}
 
 			@Override
-			protected void onFailedToDraw()
+			protected void onFailedToDraw(Exception exception)
 			{
 				enableOrDisableProgressBar(false);
+				if (exception != null)
+				{
+					mapEditingPanel.setImage(AwtBridge.toBufferedImage(ImageHelper.getInstance().createPlaceholderImage(
+							new String[] { Translation.get("newSettingsDialog.previewFailedToDraw") },
+							AwtBridge.fromAwtColor(SwingHelper.getTextColorForPlaceholderImages()))));
+					SwingHelper.handleException(exception, NewSettingsDialog.this, false);
+				}
 			}
 
 			@Override
@@ -588,7 +639,7 @@ public class NewSettingsDialog extends JDialog
 
 	private nortantis.geom.Dimension getMapDrawingAreaSize()
 	{
-		final int additionalWidthToRemoveIDontKnowWhereItsComingFrom = 4;
+		final int additionalWidthToRemoveIDontKnowWhereItsComingFrom = 10;
 		return new nortantis.geom.Dimension((mapEditingPanelContainer.getSize().width - additionalWidthToRemoveIDontKnowWhereItsComingFrom) * mapEditingPanel.osScale,
 				(mapEditingPanelContainer.getSize().height - additionalWidthToRemoveIDontKnowWhereItsComingFrom) * mapEditingPanel.osScale);
 
@@ -596,10 +647,25 @@ public class NewSettingsDialog extends JDialog
 
 	private void loadSettingsIntoGUI(MapSettings settings)
 	{
-		dimensionsComboBox.setSelectedIndex(getDimensionIndexFromDimensions(settings.generatedWidth, settings.generatedHeight));
+		GeneratedDimension dim = GeneratedDimension.fromDimensions(settings.generatedWidth, settings.generatedHeight);
+		dimensionsComboBox.setSelectedItem(dim);
+		if (dim == GeneratedDimension.Custom)
+		{
+			customWidthSpinner.setValue(settings.generatedWidth);
+			customHeightSpinner.setValue(settings.generatedHeight);
+			updateCustomDimPreview();
+		}
+		customDimPreviewHider.setVisible(dim == GeneratedDimension.Custom);
 		worldSizeSlider.setValue(settings.worldSize);
-		edgeLandToWaterProbSlider.setValue((int) (settings.edgeLandToWaterProbability * 100));
-		centerLandToWaterProbSlider.setValue((int) (settings.centerLandToWaterProbability * 100));
+		if (settings.landShape != null)
+		{
+			landShapeComboBox.setSelectedItem(settings.landShape);
+		}
+		else
+		{
+			landShapeComboBox.setSelectedItem(LandShape.Continents);
+		}
+		regionCountSlider.setValue(settings.regionCount > 0 ? settings.regionCount : 3);
 		if (settings.drawRegionColors)
 		{
 			landColoringMethodComboBox.setSelectedItem(LandColoringMethod.ColorPoliticalRegions);
@@ -616,14 +682,31 @@ public class NewSettingsDialog extends JDialog
 		booksWidget.checkSelectedBooks(settings.books);
 
 		updatePathDisplay();
+		updateRotationWarning();
 	}
 
 	private MapSettings getSettingsFromGUI()
 	{
 		MapSettings resultSettings = settings.deepCopy();
 		resultSettings.worldSize = worldSizeSlider.getValue();
-		resultSettings.edgeLandToWaterProbability = edgeLandToWaterProbSlider.getValue() / 100.0;
-		resultSettings.centerLandToWaterProbability = centerLandToWaterProbSlider.getValue() / 100.0;
+		resultSettings.landShape = (LandShape) landShapeComboBox.getSelectedItem();
+		resultSettings.regionCount = regionCountSlider.getValue();
+		// Derive old probability fields for backwards compatibility.
+		switch (resultSettings.landShape)
+		{
+			case Continents:
+				resultSettings.edgeLandToWaterProbability = 0.1;
+				resultSettings.centerLandToWaterProbability = 0.75;
+				break;
+			case Inland_Sea:
+				resultSettings.edgeLandToWaterProbability = 0.75;
+				resultSettings.centerLandToWaterProbability = 0.1;
+				break;
+			case Scattered:
+				resultSettings.edgeLandToWaterProbability = 0.5;
+				resultSettings.centerLandToWaterProbability = 0.5;
+				break;
+		}
 
 		Dimension generatedDimensions = getGeneratedBackgroundDimensionsFromGUI();
 		resultSettings.generatedWidth = (int) generatedDimensions.getWidth();
@@ -642,28 +725,39 @@ public class NewSettingsDialog extends JDialog
 
 	private Dimension getGeneratedBackgroundDimensionsFromGUI()
 	{
-		String selected = (String) dimensionsComboBox.getSelectedItem();
-		return parseGenerateBackgroundDimensionsFromDropdown(selected);
-	}
-
-	public static Dimension parseGenerateBackgroundDimensionsFromDropdown(String selected)
-	{
-		selected = selected.substring(0, selected.indexOf('('));
-		String[] parts = selected.split("x");
-		return new Dimension(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()));
-	}
-
-	private int getDimensionIndexFromDimensions(int generatedWidth, int generatedHeight)
-	{
-		for (int i : new Range(dimensionsComboBox.getItemCount()))
+		GeneratedDimension selected = (GeneratedDimension) dimensionsComboBox.getSelectedItem();
+		if (selected == GeneratedDimension.Custom)
 		{
-			Dimension dim = parseGenerateBackgroundDimensionsFromDropdown(dimensionsComboBox.getItemAt(i));
-			if (dim.getWidth() == generatedWidth && dim.getHeight() == generatedHeight)
-			{
-				return i;
-			}
+			return normalizeCustomDimensions(((Number) customWidthSpinner.getValue()).intValue(),
+					((Number) customHeightSpinner.getValue()).intValue());
 		}
-		throw new IllegalArgumentException("No dropdown menu option with dimensions " + generatedWidth + " x " + generatedHeight);
+		return new Dimension(selected.width, selected.height);
+	}
+
+	private void clearMapPreview()
+	{
+		updater.cancel();
+		mapEditingPanel.setImage(null);
+	}
+
+	private static Dimension normalizeCustomDimensions(int w, int h)
+	{
+		if (w >= h)
+		{
+			return new Dimension(4096, Math.max(1, (int) Math.round(4096.0 * h / w)));
+		}
+		else
+		{
+			return new Dimension(Math.max(1, (int) Math.round(4096.0 * w / h)), 4096);
+		}
+	}
+
+	private void updateCustomDimPreview()
+	{
+		int w = ((Number) customWidthSpinner.getValue()).intValue();
+		int h = ((Number) customHeightSpinner.getValue()).intValue();
+		Dimension norm = normalizeCustomDimensions(w, h);
+		customDimPreviewLabel.setText("(" + (int) norm.getWidth() + " \u00d7 " + (int) norm.getHeight() + ")");
 	}
 
 	private void enableOrDisableProgressBar(boolean enable)
@@ -677,7 +771,20 @@ public class NewSettingsDialog extends JDialog
 			progressBarTimer.stop();
 			progressBar.setVisible(false);
 		}
+	}
 
+	private void updateRotationWarning()
+	{
+		if (settings != null && settings.rightRotationCount != 0 && !dimensionsComboBox.getSelectedItem().equals(GeneratedDimension.Square))
+		{
+			int degrees = settings.rightRotationCount * 90;
+			rotationWarningLabel.setText("The map is rotated " + degrees + " degrees.");
+			rotationWarningHider.setVisible(true);
+		}
+		else
+		{
+			rotationWarningHider.setVisible(false);
+		}
 	}
 
 	public void createMapChangeListener(Component component)
@@ -687,12 +794,19 @@ public class NewSettingsDialog extends JDialog
 
 	public void handleMapChange()
 	{
-		nortantis.geom.Dimension size = getMapDrawingAreaSize();
-		if (size != null && size.width > 0.0 && size.height > 0.0)
+		// Defer to the next EDT cycle so that any row visibility changes (e.g. custom dimension
+		// spinners, rotation warning) have been laid out before we read the container size.
+		// Without this, getMapDrawingAreaSize() returns the stale pre-layout dimensions, causing
+		// the preview to render too large and be clipped at the bottom.
+		SwingUtilities.invokeLater(() ->
 		{
-			updater.setMaxMapSize(getMapDrawingAreaSize());
-			enableOrDisableProgressBar(true);
-			updater.createAndShowMapFull();
-		}
+			nortantis.geom.Dimension size = getMapDrawingAreaSize();
+			if (size != null && size.width > 0.0 && size.height > 0.0)
+			{
+				updater.setMaxMapSize(size);
+				enableOrDisableProgressBar(true);
+				updater.createAndShowMapFull();
+			}
+		});
 	}
 }

@@ -2,7 +2,6 @@ package nortantis;
 
 import nortantis.MapSettings.LineStyle;
 import nortantis.MapSettings.OceanWaves;
-import nortantis.geom.IntDimension;
 import nortantis.platform.Color;
 import nortantis.swing.MapEdits;
 import nortantis.util.*;
@@ -28,6 +27,15 @@ public class SettingsGenerator
 	public static int maxFrayedEdgeSizeForUI = 15;
 	public static final int maxConcentricWaveCountInEditor = 5;
 	public static final int maxConcentricWaveCountToGenerate = 3;
+	public static final int minRegionCount = 2;
+	public static int maxRegionCount = 20;
+	/** The maximum number of regions in new, generated settings.
+	 */
+	public static int maxGeneratedRegionCount(int worldSize)
+	{
+		return Math.min(maxRegionCount, Math.max(minRegionCount, worldSize / 200));
+	}
+
 	public static final int minConcentricWaveCountToGenerate = 2;
 	public static final int defaultCoastShadingAlpha = 87;
 	public static final int defaultOceanShadingAlpha = 87;
@@ -128,6 +136,21 @@ public class SettingsGenerator
 		settings.frayedBorderColor = MapCreator.generateColorFromBaseColor(rand, settings.frayedBorderColor, hueRange, saturationRange, brightnessRange);
 
 		settings.worldSize = (rand.nextInt((maxWorldSize - minWorldSizeForRandomSettings) / worldSizePrecision) + minWorldSizeForRandomSettings / worldSizePrecision) * worldSizePrecision;
+
+
+		if (settings.worldSize > (maxWorldSize - minWorldSize) / 2)
+		{
+			settings.landShape = LandShape.Continents;
+		}
+		else
+		{
+			settings.landShape = ProbabilityHelper.sampleUniform(rand, Arrays.asList(LandShape.Continents, LandShape.Scattered));
+		}
+
+		int rangeSize = maxGeneratedRegionCount(settings.worldSize) - minRegionCount;
+		int low = minRegionCount + rangeSize / 4;
+		int high = minRegionCount + (3 * rangeSize) / 4;
+		settings.regionCount = low + rand.nextInt(Math.max(1, high - low + 1));
 
 		settings.grungeWidth = 100 + rand.nextInt(1400);
 
@@ -239,7 +262,7 @@ public class SettingsGenerator
 		settings.edgeLandToWaterProbability = Math.round(settings.edgeLandToWaterProbability * 100.0) / 100.0;
 		settings.centerLandToWaterProbability = Math.round(settings.centerLandToWaterProbability * 100.0) / 100.0;
 
-		IntDimension dimension = parseGeneratedBackgroundDimensionsFromDropdown(ProbabilityHelper.sampleUniform(rand, getAllowedDimensions()));
+		GeneratedDimension dimension = ProbabilityHelper.sampleUniform(rand, Arrays.asList(GeneratedDimension.presets()));
 		settings.generatedWidth = dimension.width;
 		settings.generatedHeight = dimension.height;
 
@@ -290,22 +313,6 @@ public class SettingsGenerator
 		settings.backgroundRandomSeed = seed;
 		settings.frayedBorderSeed = seed;
 		settings.textRandomSeed = seed;
-	}
-
-	public static List<String> getAllowedDimensions()
-	{
-		List<String> result = new ArrayList<>();
-		result.add("4096 x 4096 (square)");
-		result.add("4096 x 2304 (16 by 9)");
-		result.add("4096 x 2531 (golden ratio)");
-		return result;
-	}
-
-	public static IntDimension parseGeneratedBackgroundDimensionsFromDropdown(String selected)
-	{
-		selected = selected.substring(0, selected.indexOf('('));
-		String[] parts = selected.split("x");
-		return new IntDimension(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()));
 	}
 
 	public static List<String> getAllBooks()

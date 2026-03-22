@@ -34,5 +34,4 @@ jpackage \
 --license-file end_user_license_agreement.txt
 
 rm -rf "$inputFolder"
-# rm -f "..\Nortantis.jar"
 

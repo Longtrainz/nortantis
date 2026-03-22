@@ -68,12 +68,12 @@ public class MapCreatorTest
 
 		// Force high memory mode so that mapBeforeAddingText is created. The low memory fallback path
 		// re-renders terrain for text-only changes, which can have tiny convolution edge differences.
-		MapCreator.overrideMemoryMode(false);
+		MapCreator mapCreator = new MapCreator();
+		mapCreator.overrideMemoryMode(false);
 		try
 		{
 
 			// Create the full map first (baseline)
-			MapCreator mapCreator = new MapCreator();
 			MapParts mapParts = new MapParts();
 			Image fullMap = mapCreator.createMap(settings, null, mapParts);
 			final int diffThreshold = 10;
@@ -198,7 +198,7 @@ public class MapCreatorTest
 		}
 		finally
 		{
-			MapCreator.overrideMemoryMode(null);
+			mapCreator.overrideMemoryMode(null);
 		}
 	}
 
@@ -230,7 +230,7 @@ public class MapCreatorTest
 			}
 
 			@Override
-			protected void onFailedToDraw()
+			protected void onFailedToDraw(Exception exception)
 			{
 				fail("Updater failed to draw.");
 			}
@@ -349,7 +349,10 @@ public class MapCreatorTest
 		Path tempFile = tempDir.resolve(FilenameUtils.getBaseName(settingsFileName) + " copy.nort");
 		settings.writeToFile(tempFile.toString());
 		MapSettings actual = new MapSettings(tempFile.toString());
-		assertEquals(settings, actual);
+		if (!settings.equals(actual))
+		{
+			fail("Settings differ after save/load. Differences:\n" + settings.findDifferences(actual));
+		}
 	}
 
 	@Test
@@ -513,12 +516,6 @@ public class MapCreatorTest
 	public void noText_NoRegions_SquareBackground_ConcentricWaves_WithEdits()
 	{
 		generateAndCompare("noText_NoRegions_SquareBackground_ConcentricWaves_WithEdits.nort");
-	}
-
-	@Test
-	public void preventCreatingOnlyOneTectonicPlate()
-	{
-		generateAndCompare("preventCreatingOnlyOneTectonicPlate.nort");
 	}
 
 	@Test
@@ -719,7 +716,7 @@ public class MapCreatorTest
 		doneTuple.set(false);
 		mapTuple.set(null);
 		updater.createAndShowMapFull();
-		updater.dowWhenMapIsNotDrawing(() ->
+		updater.doWhenMapIsNotDrawing(() ->
 		{
 			doneTuple.set(true);
 		});

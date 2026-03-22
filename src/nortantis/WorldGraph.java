@@ -17,6 +17,7 @@ import org.apache.commons.math3.random.RandomGenerator;
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * TestGraphImpl.java
@@ -47,18 +48,6 @@ public class WorldGraph extends VoronoiGraph
 	 * Controls which algorithm is used for findClosestCenter.
 	 */
 	public static CenterLookupMode centerLookupMode = CenterLookupMode.PIXEL_CACHED;
-
-	// Debug counters for grid-based lookup
-	public static long gridLookupDirectHits = 0;
-	public static long gridLookupNeighborHits = 0;
-	public static long gridLookupBfsFallbacks = 0;
-
-	public static void resetGridLookupCounters()
-	{
-		gridLookupDirectHits = 0;
-		gridLookupNeighborHits = 0;
-		gridLookupBfsFallbacks = 0;
-	}
 
 	// Modify seeFloorLevel to change the number of islands in the ocean.
 	public static final float oceanPlateLevel = 0.2f;
@@ -93,13 +82,17 @@ public class WorldGraph extends VoronoiGraph
 	// Maps plate ids to plates.
 	Set<TectonicPlate> plates;
 	public Map<Integer, Region> regions;
+	LandShape landShape;
+	int regionCount;
 
 	public WorldGraph(Voronoi v, double lloydRelaxationsScale, Random r, double nonBorderPlateContinentalProbability, double borderPlateContinentalProbability, double sizeMultiplier,
-			LineStyle lineStyle, double pointPrecision, boolean createElevationBiomesLakesAndRegions, boolean areRegionBoundariesVisible)
+			LineStyle lineStyle, double pointPrecision, boolean createElevationBiomesLakesAndRegions, boolean areRegionBoundariesVisible, LandShape landShape, int regionCount)
 	{
 		super(r, sizeMultiplier, pointPrecision);
 		this.nonBorderPlateContinentalProbability = nonBorderPlateContinentalProbability;
 		this.borderPlateContinentalProbability = borderPlateContinentalProbability;
+		this.landShape = landShape;
+		this.regionCount = regionCount;
 		TectonicPlate.resetIds();
 		initVoronoiGraph(v, numLloydRelaxations, lloydRelaxationsScale, createElevationBiomesLakesAndRegions);
 		regions = new TreeMap<>();
@@ -297,10 +290,9 @@ public class WorldGraph extends VoronoiGraph
 	 * Rebuilds noisy edges for a center.
 	 *
 	 * @param center
-	 *            The center to rebuild noisy edges for.
+	 * 		The center to rebuild noisy edges for.
 	 * @param centersInLoop
-	 *            For performance. The set of centers that the caller is already looping over, so that we don't rebuild noisy edges for
-	 *            neighbors unnecessarily.
+	 * 		For performance. The set of centers that the caller is already looping over, so that we don't rebuild noisy edges for neighbors unnecessarily.
 	 */
 	public void rebuildNoisyEdgesForCenter(Center center, Set<Center> centersInLoop)
 	{
@@ -420,7 +412,7 @@ public class WorldGraph extends VoronoiGraph
 	/**
 	 * Creates political regions. When done, all non-ocean centers will have a political region assigned.
 	 */
-	private void createPoliticalRegions()
+	public void createPoliticalRegions()
 	{
 		List<Region> regionList = new ArrayList<>();
 
@@ -518,6 +510,184 @@ public class WorldGraph extends VoronoiGraph
 			}
 		}
 
+		// Phase 5: Enforce exact region count when regionCount > 0.
+		if (regionCount > 0)
+		{
+			// If too many regions, merge the smallest ones.
+			while (regionList.size() > regionCount)
+			{
+				// Find the smallest region.
+				Region smallest = null;
+				for (Region r : regionList)
+				{
+					if (smallest == null || r.size() < smallest.size())
+					{
+						smallest = r;
+					}
+				}
+
+				// Find a neighboring region to merge into.
+				Region mergeTarget = findNeighboringRegion(smallest);
+				if (mergeTarget == null)
+				{
+					// No land neighbor found; merge into the closest by centroid.
+					Point centroid = WorldGraph.findCentroid(smallest.getCenters());
+					for (Region r : regionList)
+					{
+						if (r == smallest)
+						{
+							continue;
+						}
+						if (mergeTarget == null)
+						{
+							mergeTarget = r;
+						}
+						else
+						{
+							Point rc = WorldGraph.findCentroid(r.getCenters());
+							Point mc = WorldGraph.findCentroid(mergeTarget.getCenters());
+							if (centroid.distanceTo(rc) < centroid.distanceTo(mc))
+							{
+								mergeTarget = r;
+							}
+						}
+					}
+				}
+
+				if (mergeTarget != null)
+				{
+					mergeTarget.addAll(new HashSet<>(smallest.getCenters()));
+					smallest.clear();
+					regionList.remove(smallest);
+				}
+				else
+				{
+					break;
+				}
+			}
+
+			// If too few regions, split the largest ones.
+			while (regionList.size() < regionCount)
+			{
+				// Find the largest region.
+				Region largest = null;
+				for (Region r : regionList)
+				{
+					if (largest == null || r.size() > largest.size())
+					{
+						largest = r;
+					}
+				}
+
+				if (largest == null || largest.size() < 2)
+				{
+					break;
+				}
+
+				// Split the largest region using two-pole BFS.
+				Set<Center> regionCenters = largest.getCenters();
+				Point centroid = WorldGraph.findCentroid(regionCenters);
+
+				// Find pole A: farthest from centroid.
+				Center poleA = null;
+				double maxDist = -1;
+				for (Center c : regionCenters)
+				{
+					double d = c.loc.distanceTo(centroid);
+					if (d > maxDist)
+					{
+						maxDist = d;
+						poleA = c;
+					}
+				}
+
+				// Find pole B: farthest from pole A.
+				Center poleB = null;
+				maxDist = -1;
+				for (Center c : regionCenters)
+				{
+					if (c == poleA)
+					{
+						continue;
+					}
+					double d = c.loc.distanceTo(poleA.loc);
+					if (d > maxDist)
+					{
+						maxDist = d;
+						poleB = c;
+					}
+				}
+
+				if (poleB == null)
+				{
+					break;
+				}
+
+				// Simultaneous BFS from A and B within the region.
+				Set<Center> groupA = new HashSet<>();
+				Set<Center> groupB = new HashSet<>();
+				Queue<Center> queueA = new LinkedList<>();
+				Queue<Center> queueB = new LinkedList<>();
+				Set<Center> visited = new HashSet<>();
+
+				groupA.add(poleA);
+				queueA.add(poleA);
+				visited.add(poleA);
+				groupB.add(poleB);
+				queueB.add(poleB);
+				visited.add(poleB);
+
+				while (!queueA.isEmpty() || !queueB.isEmpty())
+				{
+					// Expand A by one level
+					int sizeA = queueA.size();
+					for (int step = 0; step < sizeA; step++)
+					{
+						Center c = queueA.poll();
+						for (Center n : c.neighbors)
+						{
+							if (regionCenters.contains(n) && !visited.contains(n))
+							{
+								visited.add(n);
+								groupA.add(n);
+								queueA.add(n);
+							}
+						}
+					}
+					// Expand B by one level
+					int sizeB = queueB.size();
+					for (int step = 0; step < sizeB; step++)
+					{
+						Center c = queueB.poll();
+						for (Center n : c.neighbors)
+						{
+							if (regionCenters.contains(n) && !visited.contains(n))
+							{
+								visited.add(n);
+								groupB.add(n);
+								queueB.add(n);
+							}
+						}
+					}
+				}
+
+				// Create new regions from the two groups.
+				largest.clear();
+				regionList.remove(largest);
+
+				Region regionA = new Region();
+				regionA.addAll(groupA);
+				regionList.add(regionA);
+
+				if (!groupB.isEmpty())
+				{
+					Region regionB = new Region();
+					regionB.addAll(groupB);
+					regionList.add(regionB);
+				}
+			}
+		}
+
 		// Set the id of each region and add it to the regions map.
 		for (int i : new Range(regionList.size()))
 		{
@@ -541,6 +711,28 @@ public class WorldGraph extends VoronoiGraph
 
 		// This could only happen if there are no regions on the graph.
 		return null;
+	}
+
+	/**
+	 * Finds the smallest neighboring region of the given region. Two regions are neighbors if any center in one is a neighbor of a center in the other.
+	 */
+	private Region findNeighboringRegion(Region region)
+	{
+		Region smallestNeighbor = null;
+		for (Center c : region.getCenters())
+		{
+			for (Center n : c.neighbors)
+			{
+				if (n.region != null && n.region != region)
+				{
+					if (smallestNeighbor == null || n.region.size() < smallestNeighbor.size())
+					{
+						smallestNeighbor = n.region;
+					}
+				}
+			}
+		}
+		return smallestNeighbor;
 	}
 
 	public Corner findClosestCorner(Point point)
@@ -648,19 +840,10 @@ public class WorldGraph extends VoronoiGraph
 		Center result = findCenterFromEdgeSector(point, candidate);
 		if (result != null)
 		{
-			if (result == candidate)
-			{
-				gridLookupDirectHits++;
-			}
-			else
-			{
-				gridLookupNeighborHits++;
-			}
 			return result;
 		}
 
 		// Fallback - walk to a new candidate and try exhaustive search again
-		gridLookupBfsFallbacks++;
 		Center walkResult = walkToClosestCenter(point, candidate);
 
 		// Try exhaustive search on the walk result
@@ -678,8 +861,7 @@ public class WorldGraph extends VoronoiGraph
 	}
 
 	/**
-	 * Find which center contains the point by checking pie slices. Uses angular sector as a hint to try the likely edge first, then falls
-	 * back to exhaustive search.
+	 * Find which center contains the point by checking pie slices. Uses angular sector as a hint to try the likely edge first, then falls back to exhaustive search.
 	 */
 	private Center findCenterFromEdgeSector(Point point, Center candidate)
 	{
@@ -748,8 +930,7 @@ public class WorldGraph extends VoronoiGraph
 	}
 
 	/**
-	 * Find which edge's angular sector contains the point (fast test using straight lines). Returns the edge position in center.borders, or
-	 * -1 if no sector contains the point.
+	 * Find which edge's angular sector contains the point (fast test using straight lines). Returns the edge position in center.borders, or -1 if no sector contains the point.
 	 */
 	private int findAngularSectorEdgePosition(Point point, Center center)
 	{
@@ -799,8 +980,7 @@ public class WorldGraph extends VoronoiGraph
 	}
 
 	/**
-	 * Walk from the starting center to the center whose loc is closest to the query point. This is faster than BFS and converges quickly
-	 * since Voronoi diagrams are well-structured.
+	 * Walk from the starting center to the center whose loc is closest to the query point. This is faster than BFS and converges quickly since Voronoi diagrams are well-structured.
 	 */
 	private Center walkToClosestCenter(Point query, Center start)
 	{
@@ -1203,11 +1383,11 @@ public class WorldGraph extends VoronoiGraph
 	}
 
 	/**
-	 * Updates the center lookup table, which is used to lookup which center draws at a given point. This needs to be done when a center
-	 * potentially changed its noisy edges, such as when it switched from inland to coast.
+	 * Updates the center lookup table, which is used to lookup which center draws at a given point. This needs to be done when a center potentially changed its noisy edges, such as when it switched
+	 * from inland to coast.
 	 *
 	 * @param centersToUpdate
-	 *            Centers to update
+	 * 		Centers to update
 	 */
 	public void updateCenterLookupTable(Collection<Center> centersToUpdate)
 	{
@@ -1315,10 +1495,9 @@ public class WorldGraph extends VoronoiGraph
 	 * Performs a breadth-first search starting from the given center, exploring all connected centers that satisfy the accept predicate.
 	 *
 	 * @param accept
-	 *            A predicate that determines whether a neighboring center should be included in the search. Returns true if the center
-	 *            should be explored, false otherwise.
+	 * 		A predicate that determines whether a neighboring center should be included in the search. Returns true if the center should be explored, false otherwise.
 	 * @param start
-	 *            The center to begin the search from. This center is always included in the result, regardless of the accept predicate.
+	 * 		The center to begin the search from. This center is always included in the result, regardless of the accept predicate.
 	 * @return A set containing the start center and all connected centers that satisfy the accept predicate.
 	 */
 	public Set<Center> breadthFirstSearch(Function<Center, Boolean> accept, Center start)
@@ -1352,15 +1531,13 @@ public class WorldGraph extends VoronoiGraph
 	 * Performs a breadth-first search to find the first center that satisfies the goal predicate.
 	 *
 	 * @param accept
-	 *            A predicate that determines whether to explore a neighboring center. Takes three arguments: the current center being
-	 *            expanded, the neighbor being considered, and the distance from the start (in number of hops). Returns true if the neighbor
-	 *            should be added to the search frontier, false otherwise.
+	 * 		A predicate that determines whether to explore a neighboring center. Takes three arguments: the current center being expanded, the neighbor being considered, and the distance from the start
+	 * 		(in number of hops). Returns true if the neighbor should be added to the search frontier, false otherwise.
 	 * @param isGoal
-	 *            A predicate that determines whether a center is the goal. Returns true if the center satisfies the search criteria.
+	 * 		A predicate that determines whether a center is the goal. Returns true if the center satisfies the search criteria.
 	 * @param start
-	 *            The center to begin the search from.
-	 * @return The first center found that satisfies the isGoal predicate, or null if no such center is reachable within the constraints of
-	 *         the accept predicate.
+	 * 		The center to begin the search from.
+	 * @return The first center found that satisfies the isGoal predicate, or null if no such center is reachable within the constraints of the accept predicate.
 	 */
 	public Center breadthFirstSearchForGoal(TriFunction<Center, Center, Integer, Boolean> accept, Function<Center, Boolean> isGoal, Center start)
 	{
@@ -1456,7 +1633,7 @@ public class WorldGraph extends VoronoiGraph
 		});
 	}
 
-	private void markLakes()
+	public void markLakes()
 	{
 		// This threshold allows me to distinguish between lakes and oceans.
 		final int maxLakeSize = 120;
@@ -1647,8 +1824,15 @@ public class WorldGraph extends VoronoiGraph
 	@Override
 	protected void assignCornerElevations()
 	{
-		createTectonicPlates();
-		assignOceanAndContinentalPlates();
+		if (regionCount > 0)
+		{
+			createTectonicPlatesForRegionCount();
+		}
+		else
+		{
+			createTectonicPlates();
+			assignOceanAndContinentalPlates();
+		}
 		lowerOceanPlates();
 		assignPlateCornerElevations();
 	}
@@ -1796,21 +1980,7 @@ public class WorldGraph extends VoronoiGraph
 			c.updateCoast();
 		}
 
-		// Copied from super.assignOceanCoastAndLand()
-		// Determine if each corner is ocean, coast, or water.
-		for (Corner c : corners)
-		{
-			int numOcean = 0;
-			int numLand = 0;
-			for (Center center : c.touches)
-			{
-				numOcean += (center.isWater && !center.isLake) ? 1 : 0;
-				numLand += !center.isWater ? 1 : 0;
-			}
-			c.isOcean = numOcean == c.touches.size();
-			c.isCoast = numOcean > 0 && numLand > 0;
-			c.isWater = (numLand != c.touches.size()) && !c.isCoast;
-		}
+		updateCoastAndCornerFlags();
 	}
 
 	private void assignOceanAndContinentalPlates()
@@ -1845,6 +2015,243 @@ public class WorldGraph extends VoronoiGraph
 				plate.type = PlateType.Continental;
 			else
 				plate.type = PlateType.Oceanic;
+		}
+	}
+
+	private double distFromNearestEdge(Point p)
+	{
+		double distLeft = p.x;
+		double distRight = bounds.width - p.x;
+		double distTop = p.y;
+		double distBottom = bounds.height - p.y;
+		return Math.min(Math.min(distLeft, distRight), Math.min(distTop, distBottom));
+	}
+
+	private void createTectonicPlatesForRegionCount()
+	{
+		int oceanicPlateCount = Math.max(regionCount, 4);
+
+		// For Continents/Scattered with high world size or region count, add extra oceanic
+		// plates to break up maze-like land patterns. The continental plate count stays the same.
+		int extraOceanicPlates = 0;
+		int worldSize = centers.size();
+		int worldSizeThreshold = 5000;
+		int regionCountThreshold = 10;
+		if ((landShape == null || landShape == LandShape.Continents || landShape == LandShape.Scattered) && (worldSize >= worldSizeThreshold || regionCount >= regionCountThreshold))
+		{
+			assert SettingsGenerator.maxRegionCount >= 2;
+
+			// Each factor scales from 0 to 1. Use the max so that either being high is sufficient.
+			double worldSizeFactor = worldSize >= worldSizeThreshold ? Math.min(1.0, (worldSize - worldSizeThreshold) / (double) (SettingsGenerator.maxWorldSize - worldSizeThreshold)) : 0;
+			double regionFactor = regionCount >= regionCountThreshold ? Math.min(1.0, (regionCount - regionCountThreshold) / (double) Math.max(1, SettingsGenerator.maxRegionCount - regionCountThreshold)) : 0;
+			double factor = Math.max(worldSizeFactor, regionFactor);
+
+			final double maxExtraOceanicRatio = 0.9;
+			int maxExtraOceanic = Math.max(1, (int) Math.round((regionCount * maxExtraOceanicRatio) * factor));
+			// Sample from a distribution skewed toward maxExtraOceanic. The exponent controls the skew.
+			extraOceanicPlates = (int) Math.round((1.0 - Math.pow(rand.nextDouble(), 5)) * maxExtraOceanic);
+		}
+
+		oceanicPlateCount += extraOceanicPlates;
+		int totalPlates = regionCount + oceanicPlateCount;
+
+		// Step 1: Generate well-spaced seed points using Mitchell's best-candidate algorithm.
+		// This is deterministic given the same Random instance.
+		ArrayList<Point> seedPoints = new ArrayList<>();
+		int candidatesPerPoint = 20;
+		for (int i = 0; i < totalPlates; i++)
+		{
+			Point best = null;
+			double bestDist = -1;
+			for (int c = 0; c < candidatesPerPoint; c++)
+			{
+				Point candidate = new Point(rand.nextDouble() * bounds.width, rand.nextDouble() * bounds.height);
+				double minDist = Double.MAX_VALUE;
+				for (Point existing : seedPoints)
+				{
+					minDist = Math.min(minDist, candidate.distanceTo(existing));
+				}
+				if (seedPoints.isEmpty() || minDist > bestDist)
+				{
+					bestDist = minDist;
+					best = candidate;
+				}
+			}
+			seedPoints.add(best);
+		}
+
+		// Step 2: Assign continental vs oceanic based on LandShape.
+		// Only consider the base plates (excluding extra oceanic) for continental assignment.
+		// Extra oceanic plates always remain oceanic.
+		int basePlateCount = totalPlates - extraOceanicPlates;
+		Integer[] indicesByEdgeDist = new Integer[basePlateCount];
+		for (int i = 0; i < basePlateCount; i++)
+		{
+			indicesByEdgeDist[i] = i;
+		}
+		final ArrayList<Point> finalSeedPoints = seedPoints;
+		Arrays.sort(indicesByEdgeDist, (a, b) ->
+		{
+			double da = distFromNearestEdge(finalSeedPoints.get(a));
+			double db = distFromNearestEdge(finalSeedPoints.get(b));
+			return Double.compare(da, db);
+		});
+
+		boolean[] isContinental = new boolean[totalPlates];
+		if (landShape == null || landShape == LandShape.Continents)
+		{
+			// Farthest from edges are continental
+			for (int i = basePlateCount - regionCount; i < basePlateCount; i++)
+			{
+				isContinental[indicesByEdgeDist[i]] = true;
+			}
+		}
+		else if (landShape == LandShape.Inland_Sea)
+		{
+			// Closest to edges are continental
+			for (int i = 0; i < regionCount; i++)
+			{
+				isContinental[indicesByEdgeDist[i]] = true;
+			}
+		}
+		else
+		{
+			// Scattered: randomly choose regionCount from base plates to be continental
+			List<Integer> baseIndices = new ArrayList<>();
+			for (int i = 0; i < basePlateCount; i++)
+			{
+				baseIndices.add(i);
+			}
+			Collections.shuffle(baseIndices, rand);
+			for (int i = 0; i < regionCount; i++)
+			{
+				isContinental[baseIndices.get(i)] = true;
+			}
+		}
+
+		// Step 3: Create TectonicPlates and assign growth weights.
+		List<TectonicPlate> plateList = new ArrayList<>();
+		for (int i = 0; i < totalPlates; i++)
+		{
+			double growthWeight = 0.3 + rand.nextDouble() * 0.6;
+			TectonicPlate plate = new TectonicPlate(growthWeight);
+			plate.type = isContinental[i] ? PlateType.Continental : PlateType.Oceanic;
+			plateList.add(plate);
+		}
+
+		// Step 4: Map seed points to closest Centers in main graph.
+		Center[] seedCenters = new Center[totalPlates];
+		Set<Center> usedCenters = new HashSet<>();
+		for (int i = 0; i < totalPlates; i++)
+		{
+			Point seed = seedPoints.get(i);
+			Center closest = null;
+			double closestDist = Double.MAX_VALUE;
+			for (Center c : centers)
+			{
+				if (usedCenters.contains(c))
+				{
+					continue;
+				}
+				double dist = c.loc.distanceTo(seed);
+				if (dist < closestDist)
+				{
+					closestDist = dist;
+					closest = c;
+				}
+			}
+			seedCenters[i] = closest;
+			usedCenters.add(closest);
+			closest.tectonicPlate = plateList.get(i);
+			plateList.get(i).centers.add(closest);
+		}
+
+		// Step 5: Stochastic expansion using a priority queue (Johnson-Mehl tessellation).
+		// Each growth step draws an exponentially-distributed random cost instead of a fixed one,
+		// which makes plates grow at stochastic rates in each direction. This produces organic,
+		// irregular plate shapes rather than smooth Voronoi blobs, while still guaranteeing
+		// every center is claimed and no plate ends up tiny.
+		// For Continents mode, continental plates pay an extra cost to grow near map edges,
+		// which naturally shapes them away from borders.
+		boolean biasAwayFromEdges = landShape == null || landShape == LandShape.Continents;
+		double edgeBiasDistance = Math.min(bounds.width, bounds.height) * 0.15;
+
+		PriorityQueue<double[]> frontier = new PriorityQueue<>((a, b) -> Double.compare(a[0], b[0]));
+		for (int i = 0; i < totalPlates; i++)
+		{
+			// [cost, centerIndex, plateIndex]
+			frontier.add(new double[] { 0, seedCenters[i].index, i });
+		}
+
+		while (!frontier.isEmpty())
+		{
+			double[] entry = frontier.poll();
+			double cost = entry[0];
+			int centerIdx = (int) entry[1];
+			int plateIdx = (int) entry[2];
+
+			Center center = centers.get(centerIdx);
+			if (center.tectonicPlate != null && center != seedCenters[plateIdx])
+			{
+				continue; // Already assigned
+			}
+
+			if (center.tectonicPlate == null)
+			{
+				center.tectonicPlate = plateList.get(plateIdx);
+				plateList.get(plateIdx).centers.add(center);
+			}
+
+			for (Center neighbor : center.neighbors)
+			{
+				if (neighbor.tectonicPlate == null)
+				{
+					// Draw an exponentially-distributed random cost. This simulates a Poisson
+					// process where plates fire growth events at rate growthProbability, making
+					// expansion stochastic in every direction rather than a smooth wavefront.
+					double baseCost = -Math.log(rand.nextDouble()) / plateList.get(plateIdx).growthProbability;
+
+					// In Continents mode, make continental plates reluctant to grow near edges.
+					if (biasAwayFromEdges && plateList.get(plateIdx).type == PlateType.Continental)
+					{
+						double edgeDist = distFromNearestEdge(neighbor.loc);
+						if (edgeDist < edgeBiasDistance)
+						{
+							// The closer to the edge, the higher the penalty. Ranges from 1x (at the
+							// threshold) to 5x (at the edge itself).
+							double edgeFraction = 1.0 - edgeDist / edgeBiasDistance;
+							baseCost *= 1.0 + 4.0 * edgeFraction;
+						}
+					}
+
+					// Boundary smoothing: count how many of the neighbor's neighbors are already
+					// in this plate. A cell enclosed on multiple sides is cheap to absorb (filling
+					// gaps), while a finger-tip cell with only one plate-neighbor gets no reduction.
+					// This mirrors the old algorithm's preference for low neighborsNotInSamePlateRatio.
+					int alreadyInPlate = 0;
+					for (Center nn : neighbor.neighbors)
+					{
+						if (nn.tectonicPlate == plateList.get(plateIdx))
+						{
+							alreadyInPlate++;
+						}
+					}
+					// alreadyInPlate is at least 1 (center is in the plate).
+					// Dividing by it makes progressively more-enclosed cells cheaper.
+					baseCost /= alreadyInPlate;
+
+					double newCost = cost + baseCost;
+					frontier.add(new double[] { newCost, neighbor.index, plateIdx });
+				}
+			}
+		}
+
+		// Step 6: Set plate velocities and store plates.
+		plates = new HashSet<>();
+		for (TectonicPlate plate : plateList)
+		{
+			plate.velocity = new PolarCoordinate(rand.nextDouble() * 2 * Math.PI, rand.nextDouble());
+			plates.add(plate);
 		}
 	}
 
@@ -1965,13 +2372,13 @@ public class WorldGraph extends VoronoiGraph
 	 * Returns the amount the centers p1 and p2 are from are converging. This is between -1 and 1.
 	 *
 	 * @param p1
-	 *            Location of a center along a tectonic plate border.
+	 * 		Location of a center along a tectonic plate border.
 	 * @param p1Velocity
-	 *            The velocity of the plate p1 is on.
+	 * 		The velocity of the plate p1 is on.
 	 * @param p2
-	 *            Location of a center along a tectonic plate border: not the same tectonic plate as p1
+	 * 		Location of a center along a tectonic plate border: not the same tectonic plate as p1
 	 * @param p2Velocity
-	 *            The velocity of the plate p2 is on.
+	 * 		The velocity of the plate p2 is on.
 	 */
 	private double calcLevelOfConvergence(Point p1, PolarCoordinate p1Velocity, Point p2, PolarCoordinate p2Velocity)
 	{
@@ -2000,9 +2407,9 @@ public class WorldGraph extends VoronoiGraph
 	 * Calculates the minimum distance (in radians) from angle a1 to angle a2. The result will be in the range [0, pi].
 	 *
 	 * @param a1
-	 *            An angle in radians. This must be between 0 and 2*pi.
+	 * 		An angle in radians. This must be between 0 and 2*pi.
 	 * @param a2
-	 *            An angle in radians. This must be between 0 and 2*pi.
+	 * 		An angle in radians. This must be between 0 and 2*pi.
 	 * @return
 	 */
 	private static double calcAngleDifference(double a1, double a2)
@@ -2084,6 +2491,16 @@ public class WorldGraph extends VoronoiGraph
 	 */
 	public Set<Edge> findPathGreedy(Corner start, Corner end)
 	{
+		return findPathGreedy(start, end, null, null);
+	}
+
+	/**
+	 * Greedily finds a path between the 2 given corners using Voronoi edges, skipping any neighbor corner for which {@code avoidCorner} or {@code avoidEdge} return true. The destination corner is
+	 * always reachable even if the predicate would exclude it, so a path can still terminate at an otherwise-avoided corner. If no path exists under these constraints, returns an empty set. Pass
+	 * {@code null} for {@code avoidCorner} to allow all corners. Pass null for {@code avoidEdge} to allow all corners.
+	 */
+	public Set<Edge> findPathGreedy(Corner start, Corner end, Predicate<Corner> avoidCorner, Predicate<Edge> avoidEdge)
+	{
 		if (start.equals(end))
 		{
 			return new HashSet<>();
@@ -2109,10 +2526,10 @@ public class WorldGraph extends VoronoiGraph
 			}
 		});
 
-		expandFrontier(startNode, frontier, explored);
+		expandFrontier(startNode, frontier, explored, end, avoidCorner, avoidEdge);
 
 		CornerSearchNode endNode = null;
-		while (true)
+		while (!frontier.isEmpty())
 		{
 			CornerSearchNode closest = frontier.first();
 			frontier.remove(closest);
@@ -2124,24 +2541,43 @@ public class WorldGraph extends VoronoiGraph
 				break;
 			}
 
-			expandFrontier(closest, frontier, explored);
+			expandFrontier(closest, frontier, explored, end, avoidCorner, avoidEdge);
 		}
 
 		return createPathFromBackPointers(endNode);
 	}
 
 	/**
-	 * Expands the frontier using Voronoi edges
+	 * Expands the frontier of a best-first search by enqueuing unvisited neighbors of {@code node}. Each adjacent corner is added to {@code frontier} unless it is already in {@code frontier} or
+	 * {@code explored}. Two predicates allow callers to prune the search: {@code avoidCorner} skips a neighbor corner if the predicate returns true for it, and {@code avoidEdge} skips a neighbor if
+	 * the Voronoi edge connecting it to {@code node} satisfies the predicate. Both predicates are ignored when the candidate corner equals {@code destination}, ensuring the search can always reach its
+	 * goal regardless of avoidance rules.
 	 */
-	private void expandFrontier(CornerSearchNode node, Set<CornerSearchNode> frontier, Set<CornerSearchNode> explored)
+	private void expandFrontier(CornerSearchNode node, Set<CornerSearchNode> frontier, Set<CornerSearchNode> explored, Corner destination, Predicate<Corner> avoidCorner, Predicate<Edge> avoidEdge)
 	{
 		for (Corner c : node.corner.adjacent)
 		{
 			CornerSearchNode otherNode = new CornerSearchNode(c, node);
-			if (!explored.contains(otherNode) && !frontier.contains(otherNode))
+			if (explored.contains(otherNode) || frontier.contains(otherNode))
 			{
-				frontier.add(otherNode);
+				continue;
 			}
+			if (!c.equals(destination))
+			{
+				if (avoidCorner != null && avoidCorner.test(c))
+				{
+					continue;
+				}
+				if (avoidEdge != null)
+				{
+					Edge connectingEdge = findConnectingEdge(node.corner, c);
+					if (connectingEdge != null && avoidEdge.test(connectingEdge))
+					{
+						continue;
+					}
+				}
+			}
+			frontier.add(otherNode);
 		}
 	}
 
@@ -2165,7 +2601,7 @@ public class WorldGraph extends VoronoiGraph
 	 * Create path using back pointers in search does for Voronoi edges.
 	 *
 	 * @param end
-	 *            The end of the search
+	 * 		The end of the search
 	 * @return A path
 	 */
 	private Set<Edge> createPathFromBackPointers(CornerSearchNode end)
@@ -2220,12 +2656,12 @@ public class WorldGraph extends VoronoiGraph
 	 * Uses A* search to find the shortest path between the 2 given centers using Delaunay edges.
 	 *
 	 * @param start
-	 *            Where to begin the search
+	 * 		Where to begin the search
 	 * @param end
-	 *            The goal
+	 * 		The goal
 	 * @param calculateWeight
-	 *            Finds the weight of an edge for determining whether to explore it. This should be the weight of it the Delaunay edge.
-	 *            Likely this will be calculated based on the distance from one end of the Delaunay age
+	 * 		Finds the weight of an edge for determining whether to explore it. This should be the weight of it the Delaunay edge. Likely this will be calculated based on the distance from one end of the
+	 * 		Delaunay age
 	 * @return A path if one is found; null if the and is unreachable from the start.
 	 */
 	public List<Edge> findShortestPath(Center start, Center end, TriFunction<Edge, Center, Double, Double> calculateWeight)
@@ -2318,7 +2754,7 @@ public class WorldGraph extends VoronoiGraph
 	 * Create path using back pointers in search does for Voronoi edges.
 	 *
 	 * @param end
-	 *            The end of the search
+	 * 		The end of the search
 	 * @return A path
 	 */
 	private List<Edge> createPathFromBackPointers(CenterSearchNode end)
@@ -2841,18 +3277,16 @@ public class WorldGraph extends VoronoiGraph
 	}
 
 	/**
-	 * Finds all edges that the 'accept' function accepts which are touching centersToDraw or are connected to an edge that touches those
-	 * centers.
+	 * Finds all edges that the 'accept' function accepts which are touching centersToDraw or are connected to an edge that touches those centers.
 	 *
 	 * @param centersToDraw
-	 *            Only edges either in/touching this collection or connected to edges that are in it will be returned.
+	 * 		Only edges either in/touching this collection or connected to edges that are in it will be returned.
 	 * @param accept
-	 *            Function to determine what edge is to include in results.
+	 * 		Function to determine what edge is to include in results.
 	 * @param searchEntireGraph
-	 *            When false, only centers in centersToDraw will be searched. When true, all centers will be searched. Passing this as false
-	 *            is much more performant, but can cause subtle differences in the results depending on which centers are passed in. Setting
-	 *            this to true enforces that the lists of edges returned are ordered and found the same way for full redraws vs incremental
-	 *            for any edges that touch or pass through centersToDraw.
+	 * 		When false, only centers in centersToDraw will be searched. When true, all centers will be searched. Passing this as false is much more performant, but can cause subtle differences in the
+	 * 		results depending on which centers are passed in. Setting this to true enforces that the lists of edges returned are ordered and found the same way for full redraws vs incremental for any
+	 * 		edges that touch or pass through centersToDraw.
 	 * @return
 	 */
 	public List<List<Edge>> findEdges(Collection<Center> centersToDraw, Function<Edge, Boolean> accept, boolean searchEntireGraph)
@@ -2893,12 +3327,11 @@ public class WorldGraph extends VoronoiGraph
 	 * Given an edge to start at, this returns an ordered sequence of edges in the path that edge is included in.
 	 *
 	 * @param found
-	 *            Edges that have already been searched, and so will not be searched again.
+	 * 		Edges that have already been searched, and so will not be searched again.
 	 * @param start
-	 *            Where to start to search. Not necessarily the start of the path we're searching for.
+	 * 		Where to start to search. Not necessarily the start of the path we're searching for.
 	 * @param accept
-	 *            Used to test whether edges are part of the desired path. If "edge" returns false for this function, then an empty list is
-	 *            returned.
+	 * 		Used to test whether edges are part of the desired path. If "edge" returns false for this function, then an empty list is returned.
 	 * @return A list of edges forming a path.
 	 */
 	private List<Edge> findPath(Set<Edge> found, Edge start, Function<Edge, Boolean> accept)
@@ -2957,5 +3390,165 @@ public class WorldGraph extends VoronoiGraph
 		}
 
 		return new ArrayList<>(deque);
+	}
+
+	/**
+	 * Updates coast and corner water/ocean flags based on center.isWater flags. Call this after setting center.isWater and center.isLake manually (i.e., without going through the elevation-based
+	 * assignOceanCoastAndLand).
+	 */
+	public void updateCoastAndCornerFlags()
+	{
+		for (Center c : centers)
+		{
+			c.updateCoast();
+		}
+
+		for (Corner c : corners)
+		{
+			int numOcean = 0;
+			int numLand = 0;
+			for (Center center : c.touches)
+			{
+				numOcean += (center.isWater && !center.isLake) ? 1 : 0;
+				numLand += !center.isWater ? 1 : 0;
+			}
+			c.isOcean = numOcean == c.touches.size();
+			c.isCoast = numOcean > 0 && numLand > 0;
+			c.isWater = (numLand != c.touches.size()) && !c.isCoast;
+		}
+	}
+
+	/**
+	 * Finds all rivers in the graph and returns them as ordered lists of edges. Each tributary that joins a main river is returned as a separate {@link River} object.
+	 * <p>
+	 * Seeding is done from corners adjacent to drawable river edges (i.e. {@code edge.river > RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN}), so both procedurally generated rivers and
+	 * user-drawn rivers are found.
+	 * </p>
+	 */
+	public List<River> findRivers()
+	{
+		Set<Corner> riverCorners = new HashSet<>();
+		for (Edge e : edges)
+		{
+			if (e.isRiver() && e.v0 != null && e.v1 != null)
+			{
+				riverCorners.add(e.v0);
+				riverCorners.add(e.v1);
+			}
+		}
+
+		List<River> rivers = new ArrayList<>();
+		Set<Corner> riversAlreadyFound = new HashSet<>();
+		for (Corner corner : riverCorners)
+		{
+			if (!riversAlreadyFound.contains(corner))
+			{
+				River river = findRiver(riversAlreadyFound, corner);
+				riversAlreadyFound.addAll(river.getCorners());
+				rivers.add(river);
+			}
+		}
+		return rivers;
+	}
+
+	private River findRiver(Set<Corner> riversAlreadyFound, Corner start)
+	{
+		List<Edge> options = new ArrayList<>();
+		for (Edge e : start.protrudes)
+		{
+			if (e.river > River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN && e.v0 != null && e.v1 != null)
+			{
+				options.add(e);
+			}
+		}
+		sortByRiverEdgeWidth(options);
+		if (options.size() == 0)
+		{
+			assert false;
+			return new River();
+		}
+		else if (options.size() == 1)
+		{
+			Corner downStream = options.get(0).getOtherCorner(start);
+			return followRiver(riversAlreadyFound, start, downStream);
+		}
+		else
+		{
+			River river1 = followRiver(riversAlreadyFound, start, options.get(0).getOtherCorner(start));
+			River river2 = followRiver(riversAlreadyFound, start, options.get(1).getOtherCorner(start));
+			river2.reverse();
+			river2.addAll(river1);
+			return river2;
+		}
+	}
+
+	/**
+	 * Searches along edges to find corners connected by a river. If the river forks, only the widest direction is followed; narrower tributaries are picked up as separate rivers by
+	 * {@link #findRivers()}.
+	 *
+	 * @param last
+	 *            The search will not go in the direction of this corner.
+	 * @param head
+	 *            The search will go in the direction of this corner.
+	 */
+	private River followRiver(Set<Corner> riversAlreadyFound, Corner last, Corner head)
+	{
+		Set<Corner> visitedCorners = new HashSet<>();
+		visitedCorners.add(last);
+		return followRiver(riversAlreadyFound, last, head, visitedCorners);
+	}
+
+	private River followRiver(Set<Corner> riversAlreadyFound, Corner last, Corner head, Set<Corner> visitedCorners)
+	{
+		assert last != null;
+		assert head != null;
+		assert !head.equals(last);
+
+		visitedCorners.add(head);
+		Edge lastToHead = edgeWithCorners(last, head);
+		River result = new River();
+		result.add(lastToHead);
+
+		List<Edge> riverEdges = new ArrayList<>();
+		for (Edge e : head.protrudes)
+		{
+			if (e.isRiver() && e != lastToHead)
+			{
+				riverEdges.add(e);
+			}
+		}
+
+		if (riverEdges.size() == 0)
+		{
+			return result;
+		}
+		else
+		{
+			sortByRiverEdgeWidth(riverEdges);
+			Edge widest = riverEdges.get(0);
+			Corner nextHead = widest.v0 == head ? widest.v1 : widest.v0;
+
+			if (nextHead == null)
+			{
+				return result;
+			}
+
+			if (riversAlreadyFound.contains(nextHead) || visitedCorners.contains(nextHead))
+			{
+				result.add(widest);
+				return result;
+			}
+
+			result.addAll(followRiver(riversAlreadyFound, head, nextHead, visitedCorners));
+			return result;
+		}
+	}
+
+	private void sortByRiverEdgeWidth(List<Edge> edges)
+	{
+		if (edges.size() > 1)
+		{
+			Collections.sort(edges, (e0, e1) -> -Integer.compare(e0.river, e1.river));
+		}
 	}
 }

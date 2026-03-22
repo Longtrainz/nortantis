@@ -18,6 +18,8 @@ import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
@@ -31,12 +33,54 @@ import java.util.concurrent.ExecutionException;
 
 public class SwingHelper
 {
+
 	public static final int borderWidthBetweenComponents = 4;
-	// Fonts in Linux are a little bigger, so make the side panels a little wider.
-	public static final int sidePanelPreferredWidth = OSHelper.isLinux() ? 340 : 314;
-	public static final int sidePanelMinimumWidth = sidePanelPreferredWidth;
+
+	public static final int sidePanelMinimumWidth = calcSidePanelMinWidth();
 	public static final int colorPickerLeftPadding = 2;
 	public static final int sidePanelScrollSpeed = 30;
+
+	private static int calcSidePanelMinWidth()
+	{
+		int base = 314;
+		// Fonts in Linux are a little bigger, so make the side panels a little wider.
+		int osAddition = OSHelper.isLinux() ? 40 : 0;
+		LookAndFeel lookAndFeel = UserPreferences.getInstance().lookAndFeel;
+		int uiThemeAddition = OSHelper.isLinux() && lookAndFeel.equals(LookAndFeel.System) ? 20 : OSHelper.isMac() && lookAndFeel.equals(LookAndFeel.System) ? 40 : 0;
+		String language = Translation.getEffectiveLocale().getLanguage();
+		int languageAddition = switch (language)
+		{
+			case "de" -> 30;
+			case "es" -> 10;
+			case "fr" -> 0;
+			case "pt" -> 10;
+			case "ru" -> 50;
+			default -> 0;
+		};
+		int total = base + osAddition + uiThemeAddition + languageAddition;
+		return total;
+	}
+
+	public static int getMenuShortcutKeyMask()
+	{
+		return Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+	}
+
+	public static boolean isCommandKeyDown(InputEvent e)
+	{
+		return OSHelper.isMac() ? e.isMetaDown() : e.isControlDown();
+	}
+
+	public static boolean isCommandModifierKeyCode(int keyCode)
+	{
+		return OSHelper.isMac() ? keyCode == KeyEvent.VK_META : keyCode == KeyEvent.VK_CONTROL;
+	}
+
+	public static String getCommandKeyName()
+	{
+		return OSHelper.isMac() ? "\u2318" : Translation.get("key.ctrl");
+	}
+
 
 	public static void initializeComboBoxItems(JComboBox<String> comboBox, Collection<String> items, String selectedItem, boolean forceAddSelectedItem)
 	{
@@ -330,6 +374,18 @@ public class SwingHelper
 					{
 						action.run();
 					}
+				}
+			});
+		}
+		else if (component instanceof JSpinner)
+		{
+			((JSpinner) component).addChangeListener(new ChangeListener()
+			{
+
+				@Override
+				public void stateChanged(ChangeEvent e)
+				{
+					action.run();
 				}
 			});
 		}

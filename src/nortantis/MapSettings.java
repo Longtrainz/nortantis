@@ -6,6 +6,7 @@ import nortantis.platform.Color;
 import nortantis.platform.Font;
 import nortantis.platform.FontStyle;
 import nortantis.swing.MapEdits;
+import nortantis.swing.translation.Translation;
 import nortantis.util.*;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -37,7 +38,7 @@ public class MapSettings implements Serializable
 	/**
 	 * When updating this, also update installers/version.txt
 	 */
-	public static final String currentVersion = "3.17";
+	public static final String currentVersion = "3.18";
 	public static final String fileExtension = "nort";
 	public static final String fileExtensionWithDot = "." + fileExtension;
 	public static final double defaultPointPrecision = 2.0;
@@ -78,6 +79,8 @@ public class MapSettings implements Serializable
 	public double coastlineWidth;
 	public double centerLandToWaterProbability;
 	public double edgeLandToWaterProbability;
+	public LandShape landShape;
+	public int regionCount;
 	public boolean frayedBorder;
 	public int frayedBorderSize;
 	public Color frayedBorderColor;
@@ -342,7 +345,7 @@ public class MapSettings implements Serializable
 		root.put("fadeConcentricWaves", fadeConcentricWaves);
 		root.put("brokenLinesForConcentricWaves", brokenLinesForConcentricWaves);
 		root.put("jitterToConcentricWaves", jitterToConcentricWaves);
-		root.put("oceanEffect", oceanWavesType.toString());
+		root.put("oceanEffect", enumToJson(oceanWavesType));
 		root.put("drawOceanEffectsInLakes", drawOceanEffectsInLakes);
 		root.put("worldSize", worldSize);
 		root.put("riverColor", colorToString(riverColor));
@@ -356,13 +359,21 @@ public class MapSettings implements Serializable
 		root.put("coastlineWidth", coastlineWidth);
 		root.put("edgeLandToWaterProbability", edgeLandToWaterProbability);
 		root.put("centerLandToWaterProbability", centerLandToWaterProbability);
+		if (landShape != null)
+		{
+			root.put("landShape", landShape.name());
+		}
+		if (regionCount > 0)
+		{
+			root.put("regionCount", regionCount);
+		}
 		root.put("frayedBorder", frayedBorder);
 		root.put("frayedBorderColor", colorToString(frayedBorderColor));
 		root.put("frayedBorderBlurLevel", frayedBorderBlurLevel);
 		root.put("grungeWidth", grungeWidth);
 		root.put("drawGrunge", drawGrunge);
 		root.put("cityProbability", cityProbability);
-		root.put("lineStyle", lineStyle.toString());
+		root.put("lineStyle", enumToJson(lineStyle));
 		root.put("pointPrecision", pointPrecision);
 		root.put("lloydRelaxationsScale", lloydRelaxationsScale);
 
@@ -375,7 +386,7 @@ public class MapSettings implements Serializable
 		{
 			root.put("backgroundTextureResource", backgroundTextureResource.toJSon());
 		}
-		root.put("backgroundTextureSource", backgroundTextureSource == null ? TextureSource.Assets.toString() : backgroundTextureSource.toString());
+		root.put("backgroundTextureSource", enumToJson(backgroundTextureSource == null ? TextureSource.Assets : backgroundTextureSource));
 		root.put("generateBackgroundFromTexture", generateBackgroundFromTexture);
 		root.put("solidColorBackground", solidColorBackground);
 		root.put("colorizeOcean", colorizeOcean);
@@ -425,8 +436,8 @@ public class MapSettings implements Serializable
 			root.put("borderResource", borderResource.toJSon());
 		}
 		root.put("borderWidth", borderWidth);
-		root.put("borderPosition", borderPosition.toString());
-		root.put("borderColorOption", borderColorOption.toString());
+		root.put("borderPosition", enumToJson(borderPosition));
+		root.put("borderColorOption", enumToJson(borderColorOption));
 		root.put("borderColor", colorToString(borderColor));
 		root.put("frayedBorderSize", frayedBorderSize);
 		root.put("drawRoads", drawRoads);
@@ -441,8 +452,8 @@ public class MapSettings implements Serializable
 		root.put("hillScale", hillScale);
 		root.put("duneScale", duneScale);
 		root.put("cityScale", cityScale);
-		root.put("defaultMapExportAction", defaultMapExportAction != null ? defaultMapExportAction.toString() : defaultDefaultExportAction.toString());
-		root.put("defaultHeightmapExportAction", defaultHeightmapExportAction != null ? defaultHeightmapExportAction.toString() : defaultDefaultExportAction.toString());
+		root.put("defaultMapExportAction", enumToJson(defaultMapExportAction != null ? defaultMapExportAction : defaultDefaultExportAction));
+		root.put("defaultHeightmapExportAction", enumToJson(defaultHeightmapExportAction != null ? defaultHeightmapExportAction : defaultDefaultExportAction));
 
 		root.put("drawOverlayImage", drawOverlayImage);
 		root.put("overlayImagePath", overlayImagePath);
@@ -504,13 +515,13 @@ public class MapSettings implements Serializable
 
 
 		root.put("drawGridOverlay", drawGridOverlay);
-		root.put("gridOverlayShape", gridOverlayShape.toString());
+		root.put("gridOverlayShape", enumToJson(gridOverlayShape));
 		root.put("gridOverlayRowOrColCount", gridOverlayRowOrColCount);
 		root.put("gridOverlayColor", colorToString(gridOverlayColor));
 		root.put("gridOverlayXOffset", gridOverlayXOffset.toString());
 		root.put("gridOverlayYOffset", gridOverlayYOffset.toString());
 		root.put("gridOverlayLineWidth", gridOverlayLineWidth);
-		root.put("gridOverlayLayer", gridOverlayLayer.toString());
+		root.put("gridOverlayLayer", enumToJson(gridOverlayLayer));
 		root.put("drawVoronoiGridOverlayOnlyOnLand", drawVoronoiGridOverlayOnlyOnLand);
 
 		// User edits.
@@ -544,10 +555,10 @@ public class MapSettings implements Serializable
 			{
 				mpObj.put("angle", text.angle);
 			}
-			mpObj.put("type", text.type.toString());
+			mpObj.put("type", enumToJson(text.type));
 			if (text.lineBreak != LineBreak.Auto)
 			{
-				mpObj.put("lineBreak", text.lineBreak.toString());
+				mpObj.put("lineBreak", enumToJson(text.lineBreak));
 			}
 			if (text.colorOverride != null)
 			{
@@ -713,11 +724,16 @@ public class MapSettings implements Serializable
 		return strokeToJson(regionBoundaryStyle);
 	}
 
+	private static <E extends Enum<E>> String enumToJson(E value)
+	{
+		return value.name().replace("_", " ");
+	}
+
 	@SuppressWarnings("unchecked")
 	private JSONObject strokeToJson(Stroke stroke)
 	{
 		JSONObject obj = new JSONObject();
-		obj.put("type", stroke.type.toString());
+		obj.put("type", enumToJson(stroke.type));
 		obj.put("width", stroke.width);
 		return obj;
 	}
@@ -729,7 +745,7 @@ public class MapSettings implements Serializable
 		for (EdgeEdit eEdit : edits.edgeEdits.values())
 		{
 			JSONObject mpObj = new JSONObject();
-			if (eEdit.riverLevel > 0)
+			if (eEdit.riverLevel > River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN)
 			{
 				mpObj.put("riverLevel", eEdit.riverLevel);
 				mpObj.put("index", eEdit.index);
@@ -882,6 +898,14 @@ public class MapSettings implements Serializable
 		drawOceanEffectsInLakes = root.containsKey("drawOceanEffectsInLakes") ? (boolean) root.get("drawOceanEffectsInLakes") : false;
 		centerLandToWaterProbability = (double) root.get("centerLandToWaterProbability");
 		edgeLandToWaterProbability = (double) root.get("edgeLandToWaterProbability");
+		if (root.containsKey("landShape"))
+		{
+			landShape = LandShape.valueOf((String) root.get("landShape"));
+		}
+		if (root.containsKey("regionCount"))
+		{
+			regionCount = (int) (long) root.get("regionCount");
+		}
 		frayedBorder = (boolean) root.get("frayedBorder");
 		if (root.containsKey("frayedBorderColor"))
 		{
@@ -1288,7 +1312,7 @@ public class MapSettings implements Serializable
 		}
 
 		edits = new MapEdits();
-		// hiddenTextIds is a comma delimited list.
+		// hiddenTextIds is a comma-delimited list.
 
 		boolean hasCustomImagesPath = !StringUtils.isEmpty(customImagesPath);
 		JSONObject editsJson = (JSONObject) root.get("edits");
@@ -1311,10 +1335,71 @@ public class MapSettings implements Serializable
 		runConversionForNewRangesForRandomRegionColorGeneratorSettings();
 		runConversionOnFillWithColorByType();
 		runConversionToFixCompassRosesGroupId();
+		runConversionToFillInLandShape();
+		runConversionForRegionCount();
+	}
+
+	private void runConversionForRegionCount()
+	{
+		if (isVersionGreaterThanOrEqualTo(version, "3.18"))
+		{
+			return;
+		}
+
+		if (regionCount > 0)
+		{
+			return;
+		}
+
+		Set<Integer> regionCounts = new HashSet<>();
+		for (CenterEdit cEdit : edits.centerEdits.values())
+		{
+			if (!cEdit.isWater)
+			{
+				regionCounts.add(cEdit.regionId);
+			}
+		}
+		regionCount = Math.min(SettingsGenerator.maxRegionCount, Math.max(2, regionCounts.size()));
+	}
+
+
+	/**
+	 * LandShape was added in version 3.18. For older maps, infer it from the edge and center land-to-water probabilities that were
+	 * previously used.
+	 */
+	private void runConversionToFillInLandShape()
+	{
+		if (isVersionGreaterThanOrEqualTo(version, "3.18"))
+		{
+			return;
+		}
+
+		if (landShape != null)
+		{
+			return;
+		}
+
+		if (edgeLandToWaterProbability < centerLandToWaterProbability)
+		{
+			landShape = LandShape.Continents;
+		}
+		else if (edgeLandToWaterProbability > centerLandToWaterProbability)
+		{
+			landShape = LandShape.Inland_Sea;
+		}
+		else
+		{
+			landShape = LandShape.Scattered;
+		}
 	}
 
 	private void runConversionOnFillWithColorByType()
 	{
+		if (isVersionGreaterThanOrEqualTo(version, "3.17"))
+		{
+			return;
+		}
+
 		boolean convertFillColor = shouldConvertFillColor();
 		if (convertFillColor)
 		{
@@ -1898,6 +1983,10 @@ public class MapSettings implements Serializable
 			{
 				riverLevel = (int) (long) jsonObj.get("riverLevel");
 			}
+			if (riverLevel <= River.RIVERS_THIS_SIZE_OR_SMALLER_WILL_NOT_BE_DRAWN)
+			{
+				continue;
+			}
 			int index = (int) (long) jsonObj.get("index");
 			result.put(index, new EdgeEdit(index, riverLevel));
 		}
@@ -1942,6 +2031,11 @@ public class MapSettings implements Serializable
 			{
 				// Ubuntu has this font
 				font = Font.create("Z003", FontStyle.fromNumber(Integer.parseInt(parts[1])), Integer.parseInt(parts[2]));
+			}
+			else if (Font.isInstalled("Apple Chancery"))
+			{
+				// Mac has this font
+				font = Font.create("Apple Chancery", FontStyle.fromNumber(Integer.parseInt(parts[1])), Integer.parseInt(parts[2]));
 			}
 			else
 			{
@@ -2244,8 +2338,273 @@ public class MapSettings implements Serializable
 
 		public String toString()
 		{
-			return name().replace("_", " ");
+			return Translation.get("GridOverlayLayer." + name());
 		}
+	}
+
+	/**
+	 * Compares this MapSettings to another and returns a description of which fields differ. Useful for debugging. Does not do a deep
+	 * comparison of the edits object.
+	 */
+	public String findDifferences(MapSettings other)
+	{
+		if (other == null)
+		{
+			return "other is null";
+		}
+
+		List<String> differences = new ArrayList<>();
+
+		if (!Objects.equals(artPack, other.artPack))
+			differences.add("artPack: " + artPack + " vs " + other.artPack);
+		if (backgroundRandomSeed != other.backgroundRandomSeed)
+			differences.add("backgroundRandomSeed: " + backgroundRandomSeed + " vs " + other.backgroundRandomSeed);
+		if (!Objects.equals(backgroundTextureImage, other.backgroundTextureImage))
+			differences.add("backgroundTextureImage: " + backgroundTextureImage + " vs " + other.backgroundTextureImage);
+		if (!Objects.equals(backgroundTextureResource, other.backgroundTextureResource))
+			differences.add("backgroundTextureResource: " + backgroundTextureResource + " vs " + other.backgroundTextureResource);
+		if (backgroundTextureSource != other.backgroundTextureSource)
+			differences.add("backgroundTextureSource: " + backgroundTextureSource + " vs " + other.backgroundTextureSource);
+		if (!Objects.equals(boldBackgroundColor, other.boldBackgroundColor))
+			differences.add("boldBackgroundColor: " + boldBackgroundColor + " vs " + other.boldBackgroundColor);
+		if (!Objects.equals(books, other.books))
+			differences.add("books: " + books + " vs " + other.books);
+		if (!Objects.equals(borderColor, other.borderColor))
+			differences.add("borderColor: " + borderColor + " vs " + other.borderColor);
+		if (borderColorOption != other.borderColorOption)
+			differences.add("borderColorOption: " + borderColorOption + " vs " + other.borderColorOption);
+		if (borderPosition != other.borderPosition)
+			differences.add("borderPosition: " + borderPosition + " vs " + other.borderPosition);
+		if (!Objects.equals(borderResource, other.borderResource))
+			differences.add("borderResource: " + borderResource + " vs " + other.borderResource);
+		if (!Objects.equals(borderType, other.borderType))
+			differences.add("borderType: " + borderType + " vs " + other.borderType);
+		if (borderWidth != other.borderWidth)
+			differences.add("borderWidth: " + borderWidth + " vs " + other.borderWidth);
+		if (brightnessRange != other.brightnessRange)
+			differences.add("brightnessRange: " + brightnessRange + " vs " + other.brightnessRange);
+		if (brokenLinesForConcentricWaves != other.brokenLinesForConcentricWaves)
+			differences.add("brokenLinesForConcentricWaves: " + brokenLinesForConcentricWaves + " vs " + other.brokenLinesForConcentricWaves);
+		if (Double.doubleToLongBits(centerLandToWaterProbability) != Double.doubleToLongBits(other.centerLandToWaterProbability))
+			differences.add("centerLandToWaterProbability: " + centerLandToWaterProbability + " vs " + other.centerLandToWaterProbability);
+		if (!Objects.equals(citiesFont, other.citiesFont))
+			differences.add("citiesFont: " + citiesFont + " vs " + other.citiesFont);
+		if (!Objects.equals(cityIconTypeName, other.cityIconTypeName))
+			differences.add("cityIconTypeName: " + cityIconTypeName + " vs " + other.cityIconTypeName);
+		if (Double.doubleToLongBits(cityProbability) != Double.doubleToLongBits(other.cityProbability))
+			differences.add("cityProbability: " + cityProbability + " vs " + other.cityProbability);
+		if (Double.doubleToLongBits(cityScale) != Double.doubleToLongBits(other.cityScale))
+			differences.add("cityScale: " + cityScale + " vs " + other.cityScale);
+		if (!Objects.equals(coastShadingColor, other.coastShadingColor))
+			differences.add("coastShadingColor: " + coastShadingColor + " vs " + other.coastShadingColor);
+		if (coastShadingLevel != other.coastShadingLevel)
+			differences.add("coastShadingLevel: " + coastShadingLevel + " vs " + other.coastShadingLevel);
+		if (!Objects.equals(coastlineColor, other.coastlineColor))
+			differences.add("coastlineColor: " + coastlineColor + " vs " + other.coastlineColor);
+		if (Double.doubleToLongBits(coastlineWidth) != Double.doubleToLongBits(other.coastlineWidth))
+			differences.add("coastlineWidth: " + coastlineWidth + " vs " + other.coastlineWidth);
+		if (colorizeLand != other.colorizeLand)
+			differences.add("colorizeLand: " + colorizeLand + " vs " + other.colorizeLand);
+		if (colorizeOcean != other.colorizeOcean)
+			differences.add("colorizeOcean: " + colorizeOcean + " vs " + other.colorizeOcean);
+		if (concentricWaveCount != other.concentricWaveCount)
+			differences.add("concentricWaveCount: " + concentricWaveCount + " vs " + other.concentricWaveCount);
+		if (!Objects.equals(customImagesPath, other.customImagesPath))
+			differences.add("customImagesPath: " + customImagesPath + " vs " + other.customImagesPath);
+		if (defaultDefaultExportAction != other.defaultDefaultExportAction)
+			differences.add("defaultDefaultExportAction: " + defaultDefaultExportAction + " vs " + other.defaultDefaultExportAction);
+		if (defaultHeightmapExportAction != other.defaultHeightmapExportAction)
+			differences.add("defaultHeightmapExportAction: " + defaultHeightmapExportAction + " vs " + other.defaultHeightmapExportAction);
+		if (defaultMapExportAction != other.defaultMapExportAction)
+			differences.add("defaultMapExportAction: " + defaultMapExportAction + " vs " + other.defaultMapExportAction);
+		if (!Objects.equals(defaultRoadColor, other.defaultRoadColor))
+			differences.add("defaultRoadColor: " + defaultRoadColor + " vs " + other.defaultRoadColor);
+		if (!Objects.equals(defaultRoadStyle, other.defaultRoadStyle))
+			differences.add("defaultRoadStyle: " + defaultRoadStyle + " vs " + other.defaultRoadStyle);
+		if (Double.doubleToLongBits(defaultRoadWidth) != Double.doubleToLongBits(other.defaultRoadWidth))
+			differences.add("defaultRoadWidth: " + defaultRoadWidth + " vs " + other.defaultRoadWidth);
+		if (Double.doubleToLongBits(defaultTreeHeightScaleForOldMaps) != Double.doubleToLongBits(other.defaultTreeHeightScaleForOldMaps))
+			differences.add("defaultTreeHeightScaleForOldMaps: " + defaultTreeHeightScaleForOldMaps + " vs " + other.defaultTreeHeightScaleForOldMaps);
+		if (drawBoldBackground != other.drawBoldBackground)
+			differences.add("drawBoldBackground: " + drawBoldBackground + " vs " + other.drawBoldBackground);
+		if (drawBorder != other.drawBorder)
+			differences.add("drawBorder: " + drawBorder + " vs " + other.drawBorder);
+		if (drawGridOverlay != other.drawGridOverlay)
+			differences.add("drawGridOverlay: " + drawGridOverlay + " vs " + other.drawGridOverlay);
+		if (drawGrunge != other.drawGrunge)
+			differences.add("drawGrunge: " + drawGrunge + " vs " + other.drawGrunge);
+		if (drawOceanEffectsInLakes != other.drawOceanEffectsInLakes)
+			differences.add("drawOceanEffectsInLakes: " + drawOceanEffectsInLakes + " vs " + other.drawOceanEffectsInLakes);
+		if (drawOverlayImage != other.drawOverlayImage)
+			differences.add("drawOverlayImage: " + drawOverlayImage + " vs " + other.drawOverlayImage);
+		if (drawRegionBoundaries != other.drawRegionBoundaries)
+			differences.add("drawRegionBoundaries: " + drawRegionBoundaries + " vs " + other.drawRegionBoundaries);
+		if (drawRegionColors != other.drawRegionColors)
+			differences.add("drawRegionColors: " + drawRegionColors + " vs " + other.drawRegionColors);
+		if (drawRoads != other.drawRoads)
+			differences.add("drawRoads: " + drawRoads + " vs " + other.drawRoads);
+		if (drawText != other.drawText)
+			differences.add("drawText: " + drawText + " vs " + other.drawText);
+		if (drawVoronoiGridOverlayOnlyOnLand != other.drawVoronoiGridOverlayOnlyOnLand)
+			differences.add("drawVoronoiGridOverlayOnlyOnLand: " + drawVoronoiGridOverlayOnlyOnLand + " vs " + other.drawVoronoiGridOverlayOnlyOnLand);
+		if (Double.doubleToLongBits(duneScale) != Double.doubleToLongBits(other.duneScale))
+			differences.add("duneScale: " + duneScale + " vs " + other.duneScale);
+		if (Double.doubleToLongBits(edgeLandToWaterProbability) != Double.doubleToLongBits(other.edgeLandToWaterProbability))
+			differences.add("edgeLandToWaterProbability: " + edgeLandToWaterProbability + " vs " + other.edgeLandToWaterProbability);
+		if (edits != other.edits)
+			differences.add("edits: (reference differs, deep comparison skipped)");
+		if (fadeConcentricWaves != other.fadeConcentricWaves)
+			differences.add("fadeConcentricWaves: " + fadeConcentricWaves + " vs " + other.fadeConcentricWaves);
+		if (!Objects.equals(fillWithColorByType, other.fillWithColorByType))
+			differences.add("fillWithColorByType: " + fillWithColorByType + " vs " + other.fillWithColorByType);
+		if (flipHorizontally != other.flipHorizontally)
+			differences.add("flipHorizontally: " + flipHorizontally + " vs " + other.flipHorizontally);
+		if (flipVertically != other.flipVertically)
+			differences.add("flipVertically: " + flipVertically + " vs " + other.flipVertically);
+		if (frayedBorder != other.frayedBorder)
+			differences.add("frayedBorder: " + frayedBorder + " vs " + other.frayedBorder);
+		if (frayedBorderBlurLevel != other.frayedBorderBlurLevel)
+			differences.add("frayedBorderBlurLevel: " + frayedBorderBlurLevel + " vs " + other.frayedBorderBlurLevel);
+		if (!Objects.equals(frayedBorderColor, other.frayedBorderColor))
+			differences.add("frayedBorderColor: " + frayedBorderColor + " vs " + other.frayedBorderColor);
+		if (frayedBorderSeed != other.frayedBorderSeed)
+			differences.add("frayedBorderSeed: " + frayedBorderSeed + " vs " + other.frayedBorderSeed);
+		if (frayedBorderSize != other.frayedBorderSize)
+			differences.add("frayedBorderSize: " + frayedBorderSize + " vs " + other.frayedBorderSize);
+		if (generateBackground != other.generateBackground)
+			differences.add("generateBackground: " + generateBackground + " vs " + other.generateBackground);
+		if (generateBackgroundFromTexture != other.generateBackgroundFromTexture)
+			differences.add("generateBackgroundFromTexture: " + generateBackgroundFromTexture + " vs " + other.generateBackgroundFromTexture);
+		if (generatedHeight != other.generatedHeight)
+			differences.add("generatedHeight: " + generatedHeight + " vs " + other.generatedHeight);
+		if (generatedWidth != other.generatedWidth)
+			differences.add("generatedWidth: " + generatedWidth + " vs " + other.generatedWidth);
+		if (!Objects.equals(gridOverlayColor, other.gridOverlayColor))
+			differences.add("gridOverlayColor: " + gridOverlayColor + " vs " + other.gridOverlayColor);
+		if (gridOverlayLayer != other.gridOverlayLayer)
+			differences.add("gridOverlayLayer: " + gridOverlayLayer + " vs " + other.gridOverlayLayer);
+		if (gridOverlayLineWidth != other.gridOverlayLineWidth)
+			differences.add("gridOverlayLineWidth: " + gridOverlayLineWidth + " vs " + other.gridOverlayLineWidth);
+		if (gridOverlayRowOrColCount != other.gridOverlayRowOrColCount)
+			differences.add("gridOverlayRowOrColCount: " + gridOverlayRowOrColCount + " vs " + other.gridOverlayRowOrColCount);
+		if (gridOverlayShape != other.gridOverlayShape)
+			differences.add("gridOverlayShape: " + gridOverlayShape + " vs " + other.gridOverlayShape);
+		if (gridOverlayXOffset != other.gridOverlayXOffset)
+			differences.add("gridOverlayXOffset: " + gridOverlayXOffset + " vs " + other.gridOverlayXOffset);
+		if (gridOverlayYOffset != other.gridOverlayYOffset)
+			differences.add("gridOverlayYOffset: " + gridOverlayYOffset + " vs " + other.gridOverlayYOffset);
+		if (grungeWidth != other.grungeWidth)
+			differences.add("grungeWidth: " + grungeWidth + " vs " + other.grungeWidth);
+		if (!Objects.equals(heightmapExportPath, other.heightmapExportPath))
+			differences.add("heightmapExportPath: " + heightmapExportPath + " vs " + other.heightmapExportPath);
+		if (Double.doubleToLongBits(heightmapResolution) != Double.doubleToLongBits(other.heightmapResolution))
+			differences.add("heightmapResolution: " + heightmapResolution + " vs " + other.heightmapResolution);
+		if (Double.doubleToLongBits(hillScale) != Double.doubleToLongBits(other.hillScale))
+			differences.add("hillScale: " + hillScale + " vs " + other.hillScale);
+		if (hueRange != other.hueRange)
+			differences.add("hueRange: " + hueRange + " vs " + other.hueRange);
+		if (!Objects.equals(iconFillColorsByType, other.iconFillColorsByType))
+			differences.add("iconFillColorsByType: " + iconFillColorsByType + " vs " + other.iconFillColorsByType);
+		if (!Objects.equals(iconFilterColorsByType, other.iconFilterColorsByType))
+			differences.add("iconFilterColorsByType: " + iconFilterColorsByType + " vs " + other.iconFilterColorsByType);
+		if (!Objects.equals(imageExportPath, other.imageExportPath))
+			differences.add("imageExportPath: " + imageExportPath + " vs " + other.imageExportPath);
+		if (jitterToConcentricWaves != other.jitterToConcentricWaves)
+			differences.add("jitterToConcentricWaves: " + jitterToConcentricWaves + " vs " + other.jitterToConcentricWaves);
+		if (!Objects.equals(landColor, other.landColor))
+			differences.add("landColor: " + landColor + " vs " + other.landColor);
+		if (landShape != other.landShape)
+			differences.add("landShape: " + landShape + " vs " + other.landShape);
+		if (lineStyle != other.lineStyle)
+			differences.add("lineStyle: " + lineStyle + " vs " + other.lineStyle);
+		if (Double.doubleToLongBits(lloydRelaxationsScale) != Double.doubleToLongBits(other.lloydRelaxationsScale))
+			differences.add("lloydRelaxationsScale: " + lloydRelaxationsScale + " vs " + other.lloydRelaxationsScale);
+		if (!Objects.equals(maximizeOpacityByType, other.maximizeOpacityByType))
+			differences.add("maximizeOpacityByType: " + maximizeOpacityByType + " vs " + other.maximizeOpacityByType);
+		if (!Objects.equals(mountainRangeFont, other.mountainRangeFont))
+			differences.add("mountainRangeFont: " + mountainRangeFont + " vs " + other.mountainRangeFont);
+		if (Double.doubleToLongBits(mountainScale) != Double.doubleToLongBits(other.mountainScale))
+			differences.add("mountainScale: " + mountainScale + " vs " + other.mountainScale);
+		if (!Objects.equals(oceanColor, other.oceanColor))
+			differences.add("oceanColor: " + oceanColor + " vs " + other.oceanColor);
+		if (!Objects.equals(oceanEffectsColor, other.oceanEffectsColor))
+			differences.add("oceanEffectsColor: " + oceanEffectsColor + " vs " + other.oceanEffectsColor);
+		if (oceanEffectsLevel != other.oceanEffectsLevel)
+			differences.add("oceanEffectsLevel: " + oceanEffectsLevel + " vs " + other.oceanEffectsLevel);
+		if (!Objects.equals(oceanShadingColor, other.oceanShadingColor))
+			differences.add("oceanShadingColor: " + oceanShadingColor + " vs " + other.oceanShadingColor);
+		if (oceanShadingLevel != other.oceanShadingLevel)
+			differences.add("oceanShadingLevel: " + oceanShadingLevel + " vs " + other.oceanShadingLevel);
+		if (!Objects.equals(oceanWavesColor, other.oceanWavesColor))
+			differences.add("oceanWavesColor: " + oceanWavesColor + " vs " + other.oceanWavesColor);
+		if (oceanWavesLevel != other.oceanWavesLevel)
+			differences.add("oceanWavesLevel: " + oceanWavesLevel + " vs " + other.oceanWavesLevel);
+		if (oceanWavesType != other.oceanWavesType)
+			differences.add("oceanWavesType: " + oceanWavesType + " vs " + other.oceanWavesType);
+		if (!Objects.equals(otherMountainsFont, other.otherMountainsFont))
+			differences.add("otherMountainsFont: " + otherMountainsFont + " vs " + other.otherMountainsFont);
+		if (Double.doubleToLongBits(overlayImageDefaultScale) != Double.doubleToLongBits(other.overlayImageDefaultScale))
+			differences.add("overlayImageDefaultScale: " + overlayImageDefaultScale + " vs " + other.overlayImageDefaultScale);
+		if (overlayImageDefaultTransparency != other.overlayImageDefaultTransparency)
+			differences.add("overlayImageDefaultTransparency: " + overlayImageDefaultTransparency + " vs " + other.overlayImageDefaultTransparency);
+		if (!Objects.equals(overlayImagePath, other.overlayImagePath))
+			differences.add("overlayImagePath: " + overlayImagePath + " vs " + other.overlayImagePath);
+		if (overlayImageTransparency != other.overlayImageTransparency)
+			differences.add("overlayImageTransparency: " + overlayImageTransparency + " vs " + other.overlayImageTransparency);
+		if (!Objects.equals(overlayOffsetResolutionInvariant, other.overlayOffsetResolutionInvariant))
+			differences.add("overlayOffsetResolutionInvariant: " + overlayOffsetResolutionInvariant + " vs " + other.overlayOffsetResolutionInvariant);
+		if (Double.doubleToLongBits(overlayScale) != Double.doubleToLongBits(other.overlayScale))
+			differences.add("overlayScale: " + overlayScale + " vs " + other.overlayScale);
+		if (Double.doubleToLongBits(pointPrecision) != Double.doubleToLongBits(other.pointPrecision))
+			differences.add("pointPrecision: " + pointPrecision + " vs " + other.pointPrecision);
+		if (randomSeed != other.randomSeed)
+			differences.add("randomSeed: " + randomSeed + " vs " + other.randomSeed);
+		if (!Objects.equals(regionBaseColor, other.regionBaseColor))
+			differences.add("regionBaseColor: " + regionBaseColor + " vs " + other.regionBaseColor);
+		if (!Objects.equals(regionBoundaryColor, other.regionBoundaryColor))
+			differences.add("regionBoundaryColor: " + regionBoundaryColor + " vs " + other.regionBoundaryColor);
+		if (!Objects.equals(regionBoundaryStyle, other.regionBoundaryStyle))
+			differences.add("regionBoundaryStyle: " + regionBoundaryStyle + " vs " + other.regionBoundaryStyle);
+		if (regionCount != other.regionCount)
+			differences.add("regionCount: " + regionCount + " vs " + other.regionCount);
+		if (!Objects.equals(regionFont, other.regionFont))
+			differences.add("regionFont: " + regionFont + " vs " + other.regionFont);
+		if (regionsRandomSeed != other.regionsRandomSeed)
+			differences.add("regionsRandomSeed: " + regionsRandomSeed + " vs " + other.regionsRandomSeed);
+		if (Double.doubleToLongBits(resolution) != Double.doubleToLongBits(other.resolution))
+			differences.add("resolution: " + resolution + " vs " + other.resolution);
+		if (rightRotationCount != other.rightRotationCount)
+			differences.add("rightRotationCount: " + rightRotationCount + " vs " + other.rightRotationCount);
+		if (!Objects.equals(riverColor, other.riverColor))
+			differences.add("riverColor: " + riverColor + " vs " + other.riverColor);
+		if (!Objects.equals(riverFont, other.riverFont))
+			differences.add("riverFont: " + riverFont + " vs " + other.riverFont);
+		if (!Objects.equals(roadColor, other.roadColor))
+			differences.add("roadColor: " + roadColor + " vs " + other.roadColor);
+		if (!Objects.equals(roadStyle, other.roadStyle))
+			differences.add("roadStyle: " + roadStyle + " vs " + other.roadStyle);
+		if (saturationRange != other.saturationRange)
+			differences.add("saturationRange: " + saturationRange + " vs " + other.saturationRange);
+		if (solidColorBackground != other.solidColorBackground)
+			differences.add("solidColorBackground: " + solidColorBackground + " vs " + other.solidColorBackground);
+		if (!Objects.equals(textColor, other.textColor))
+			differences.add("textColor: " + textColor + " vs " + other.textColor);
+		if (textRandomSeed != other.textRandomSeed)
+			differences.add("textRandomSeed: " + textRandomSeed + " vs " + other.textRandomSeed);
+		if (!Objects.equals(titleFont, other.titleFont))
+			differences.add("titleFont: " + titleFont + " vs " + other.titleFont);
+		if (Double.doubleToLongBits(treeHeightScale) != Double.doubleToLongBits(other.treeHeightScale))
+			differences.add("treeHeightScale: " + treeHeightScale + " vs " + other.treeHeightScale);
+		if (!Objects.equals(version, other.version))
+			differences.add("version: " + version + " vs " + other.version);
+		if (worldSize != other.worldSize)
+			differences.add("worldSize: " + worldSize + " vs " + other.worldSize);
+
+		if (differences.isEmpty())
+		{
+			return "No differences found";
+		}
+		return String.join("\n", differences);
 	}
 
 	@Override
@@ -2265,10 +2624,10 @@ public class MapSettings implements Serializable
 				edgeLandToWaterProbability, edits, fadeConcentricWaves, fillWithColorByType, flipHorizontally, flipVertically, frayedBorder, frayedBorderBlurLevel, frayedBorderColor, frayedBorderSeed,
 				frayedBorderSize, generateBackground, generateBackgroundFromTexture, generatedHeight, generatedWidth, gridOverlayColor, gridOverlayLayer, gridOverlayLineWidth,
 				gridOverlayRowOrColCount, gridOverlayShape, gridOverlayXOffset, gridOverlayYOffset, grungeWidth, heightmapExportPath, heightmapResolution, hillScale, hueRange, iconFillColorsByType,
-				iconFilterColorsByType, imageExportPath, jitterToConcentricWaves, landColor, lineStyle, lloydRelaxationsScale, maximizeOpacityByType, mountainRangeFont, mountainScale, oceanColor,
-				oceanEffectsColor, oceanEffectsLevel, oceanShadingColor, oceanShadingLevel, oceanWavesColor, oceanWavesLevel, oceanWavesType, otherMountainsFont, overlayImageDefaultScale,
+				iconFilterColorsByType, imageExportPath, jitterToConcentricWaves, landColor, landShape, lineStyle, lloydRelaxationsScale, maximizeOpacityByType, mountainRangeFont, mountainScale,
+				oceanColor, oceanEffectsColor, oceanEffectsLevel, oceanShadingColor, oceanShadingLevel, oceanWavesColor, oceanWavesLevel, oceanWavesType, otherMountainsFont, overlayImageDefaultScale,
 				overlayImageDefaultTransparency, overlayImagePath, overlayImageTransparency, overlayOffsetResolutionInvariant, overlayScale, pointPrecision, randomSeed, regionBaseColor,
-				regionBoundaryColor, regionBoundaryStyle, regionFont, regionsRandomSeed, resolution, rightRotationCount, riverColor, riverFont, roadColor, roadStyle, saturationRange,
+				regionBoundaryColor, regionBoundaryStyle, regionCount, regionFont, regionsRandomSeed, resolution, rightRotationCount, riverColor, riverFont, roadColor, roadStyle, saturationRange,
 				solidColorBackground, textColor, textRandomSeed, titleFont, treeHeightScale, version, worldSize);
 	}
 
@@ -2319,7 +2678,7 @@ public class MapSettings implements Serializable
 				&& Objects.equals(heightmapExportPath, other.heightmapExportPath) && Double.doubleToLongBits(heightmapResolution) == Double.doubleToLongBits(other.heightmapResolution)
 				&& Double.doubleToLongBits(hillScale) == Double.doubleToLongBits(other.hillScale) && hueRange == other.hueRange && Objects.equals(iconFillColorsByType, other.iconFillColorsByType)
 				&& Objects.equals(iconFilterColorsByType, other.iconFilterColorsByType) && Objects.equals(imageExportPath, other.imageExportPath)
-				&& jitterToConcentricWaves == other.jitterToConcentricWaves && Objects.equals(landColor, other.landColor) && lineStyle == other.lineStyle
+				&& jitterToConcentricWaves == other.jitterToConcentricWaves && Objects.equals(landColor, other.landColor) && landShape == other.landShape && lineStyle == other.lineStyle
 				&& Double.doubleToLongBits(lloydRelaxationsScale) == Double.doubleToLongBits(other.lloydRelaxationsScale) && Objects.equals(maximizeOpacityByType, other.maximizeOpacityByType)
 				&& Objects.equals(mountainRangeFont, other.mountainRangeFont) && Double.doubleToLongBits(mountainScale) == Double.doubleToLongBits(other.mountainScale)
 				&& Objects.equals(oceanColor, other.oceanColor) && Objects.equals(oceanEffectsColor, other.oceanEffectsColor) && oceanEffectsLevel == other.oceanEffectsLevel
@@ -2330,12 +2689,12 @@ public class MapSettings implements Serializable
 				&& overlayImageTransparency == other.overlayImageTransparency && Objects.equals(overlayOffsetResolutionInvariant, other.overlayOffsetResolutionInvariant)
 				&& Double.doubleToLongBits(overlayScale) == Double.doubleToLongBits(other.overlayScale) && Double.doubleToLongBits(pointPrecision) == Double.doubleToLongBits(other.pointPrecision)
 				&& randomSeed == other.randomSeed && Objects.equals(regionBaseColor, other.regionBaseColor) && Objects.equals(regionBoundaryColor, other.regionBoundaryColor)
-				&& Objects.equals(regionBoundaryStyle, other.regionBoundaryStyle) && Objects.equals(regionFont, other.regionFont) && regionsRandomSeed == other.regionsRandomSeed
-				&& Double.doubleToLongBits(resolution) == Double.doubleToLongBits(other.resolution) && rightRotationCount == other.rightRotationCount && Objects.equals(riverColor, other.riverColor)
-				&& Objects.equals(riverFont, other.riverFont) && Objects.equals(roadColor, other.roadColor) && Objects.equals(roadStyle, other.roadStyle) && saturationRange == other.saturationRange
-				&& solidColorBackground == other.solidColorBackground && Objects.equals(textColor, other.textColor) && textRandomSeed == other.textRandomSeed
-				&& Objects.equals(titleFont, other.titleFont) && Double.doubleToLongBits(treeHeightScale) == Double.doubleToLongBits(other.treeHeightScale) && Objects.equals(version, other.version)
-				&& worldSize == other.worldSize;
+				&& Objects.equals(regionBoundaryStyle, other.regionBoundaryStyle) && regionCount == other.regionCount && Objects.equals(regionFont, other.regionFont)
+				&& regionsRandomSeed == other.regionsRandomSeed && Double.doubleToLongBits(resolution) == Double.doubleToLongBits(other.resolution) && rightRotationCount == other.rightRotationCount
+				&& Objects.equals(riverColor, other.riverColor) && Objects.equals(riverFont, other.riverFont) && Objects.equals(roadColor, other.roadColor)
+				&& Objects.equals(roadStyle, other.roadStyle) && saturationRange == other.saturationRange && solidColorBackground == other.solidColorBackground
+				&& Objects.equals(textColor, other.textColor) && textRandomSeed == other.textRandomSeed && Objects.equals(titleFont, other.titleFont)
+				&& Double.doubleToLongBits(treeHeightScale) == Double.doubleToLongBits(other.treeHeightScale) && Objects.equals(version, other.version) && worldSize == other.worldSize;
 	}
 
 }

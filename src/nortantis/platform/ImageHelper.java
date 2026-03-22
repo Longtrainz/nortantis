@@ -8,10 +8,7 @@ import nortantis.geom.*;
 import nortantis.geom.Dimension;
 import nortantis.geom.Point;
 import nortantis.geom.Rectangle;
-import nortantis.util.Helper;
-import nortantis.util.Range;
-import nortantis.util.ThreadHelper;
-import nortantis.util.Tuple2;
+import nortantis.util.*;
 import org.apache.commons.math3.analysis.function.Sinc;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.imgscalr.Scalr.Method;
@@ -1653,10 +1650,10 @@ public abstract class ImageHelper
 			return Image.create(1, 1, ImageType.ARGB);
 		}
 
-		Font font = MapSettings.parseFont("URW Chancery L\t0\t30");
+		Font font = Font.create(OSHelper.isLinux() ? "Z003" : OSHelper.isMac() ? "Apple Chancery" : "Gabriola", FontStyle.Plain, 30);
 		if (font.canDisplayUpTo(String.join("", message)) != -1)
 		{
-			font = Font.create("SansSerif", FontStyle.Plain, 30);
+			font = Font.create("Serif", FontStyle.Plain, 30);
 		}
 
 		IntDimension textBounds = TextDrawer.getTextDimensions(message[0], font).toIntDimension();

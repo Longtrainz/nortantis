@@ -27,6 +27,7 @@ public class UserPreferences
 	public String defaultCustomImagesPath;
 	public boolean hideNewMapWithSameThemeRegionColorsMessage;
 	public boolean hideGridOverlaySeizureWarning;
+	public boolean hideThemeChangedMessage;
 	public Set<String> collapsedPanels = new TreeSet<>();
 	public String lastVersionFromCheck;
 	public LocalDateTime lastVersionCheckTime;
@@ -132,6 +133,11 @@ public class UserPreferences
 					language = props.getProperty("language");
 				}
 
+				if (props.containsKey("hideThemeChangedMessage"))
+				{
+					hideThemeChangedMessage = Boolean.parseBoolean(props.getProperty("hideThemeChangedMessage"));
+				}
+
 			}
 		}
 		catch (Exception e)
@@ -159,7 +165,7 @@ public class UserPreferences
 	public void save()
 	{
 		Properties props = new Properties();
-		props.setProperty("editorImageQuality", editorImageQuality.toString());
+		props.setProperty("editorImageQuality", editorImageQuality.name().replace("_", " "));
 		props.setProperty("recentMapFilePaths", String.join("\t", recentMapFilePaths));
 		props.setProperty("defaultCustomImagesPath", defaultCustomImagesPath == null ? "" : defaultCustomImagesPath);
 		props.setProperty("showNewMapWithSameThemeRegionColorsMessage", hideNewMapWithSameThemeRegionColorsMessage + "");
@@ -171,6 +177,7 @@ public class UserPreferences
 		props.setProperty("toolsPanelWidth", toolsPanelWidth + "");
 		props.setProperty("themePanelWidth", themePanelWidth + "");
 		props.setProperty("language", language == null ? "" : language);
+		props.setProperty("hideThemeChangedMessage", hideThemeChangedMessage + "");
 
 		try
 		{
