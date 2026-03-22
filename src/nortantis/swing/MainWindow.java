@@ -2404,10 +2404,11 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		String exportFolder = getFlagValue(args, "--export");
 		String loadFile = getFlagValue(args, "--load");
 		String seedStr = getFlagValue(args, "--seed");
+		String resStr = getFlagValue(args, "--resolution");
 
 		if (exportFolder == null)
 		{
-			System.err.println("Usage: --headless --export <folder> [--load <file.nort>] [--seed <number>]");
+			System.err.println("Usage: --headless --export <folder> [--load <file.nort>] [--seed <number>] [--resolution <0.5-1.5>]");
 			System.exit(1);
 		}
 
@@ -2428,6 +2429,15 @@ public class MainWindow extends JFrame implements ILoggerTarget
 			if (seedStr != null)
 			{
 				settings.randomSeed = Long.parseLong(seedStr);
+			}
+
+			if (resStr != null)
+			{
+				settings.resolution = Double.parseDouble(resStr);
+			}
+			else
+			{
+				settings.resolution = 2.0;
 			}
 
 			nortantis.editor.MapParts mapParts = new nortantis.editor.MapParts();
