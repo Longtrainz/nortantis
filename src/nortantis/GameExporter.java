@@ -1,5 +1,7 @@
 package nortantis;
 
+import nortantis.editor.CenterEdit;
+import nortantis.editor.CenterIconType;
 import nortantis.editor.Road;
 import nortantis.geom.Point;
 import nortantis.geom.Rectangle;
@@ -157,20 +159,101 @@ public class GameExporter
 		return regionsArr;
 	}
 
-	@SuppressWarnings("unchecked")
-	private JSONArray buildCities()
+	private Set<Integer> collectAllCityCenterIndices()
 	{
-		Map<Integer, String> cityNames = collectCityNames();
+		Set<Integer> cityIndices = new LinkedHashSet<>();
 
-		JSONArray citiesArr = new JSONArray();
-		int cityId = 0;
+		// Source 1: graph centers with isCity flag (auto-generated)
 		for (Center center : graph.centers)
 		{
-			if (!center.isCity)
+			if (center.isCity)
+			{
+				cityIndices.add(center.index);
+			}
+		}
+
+		// Source 2: user-placed city icons via editor
+		if (settings.edits != null && settings.edits.centerEdits != null)
+		{
+			for (CenterEdit edit : settings.edits.centerEdits.values())
+			{
+				if (edit.icon != null && edit.icon.iconType == CenterIconType.City)
+				{
+					cityIndices.add(edit.index);
+				}
+			}
+		}
+
+		// Source 3: MapText labels of type City that don't match any known city center.
+		// Find the nearest land center for each unmatched label and treat it as a city.
+		if (settings.edits != null && settings.edits.text != null)
+		{
+			double actualScale = settings.generatedWidth > 0
+					? graph.bounds.width / settings.generatedWidth
+					: 1.0;
+
+			for (MapText text : settings.edits.text)
+			{
+				if (text.type != TextType.City || text.location == null)
+				{
+					continue;
+				}
+				Point textScaled = text.location.mult(actualScale);
+				boolean alreadyMatched = false;
+				for (int idx : cityIndices)
+				{
+					Center c = graph.centers.get(idx);
+					if (c.loc.distanceTo(textScaled) < 80)
+					{
+						alreadyMatched = true;
+						break;
+					}
+				}
+				if (!alreadyMatched)
+				{
+					Center nearest = findNearestLandCenter(textScaled);
+					if (nearest != null)
+					{
+						cityIndices.add(nearest.index);
+					}
+				}
+			}
+		}
+
+		return cityIndices;
+	}
+
+	private Center findNearestLandCenter(Point loc)
+	{
+		Center best = null;
+		double minDist = Double.MAX_VALUE;
+		for (Center c : graph.centers)
+		{
+			if (c.isWater)
 			{
 				continue;
 			}
+			double dist = c.loc.distanceTo(loc);
+			if (dist < minDist)
+			{
+				minDist = dist;
+				best = c;
+			}
+		}
+		return best;
+	}
 
+	@SuppressWarnings("unchecked")
+	private JSONArray buildCities()
+	{
+		Set<Integer> cityIndices = collectAllCityCenterIndices();
+		Map<Integer, String> cityNames = collectCityNames(cityIndices);
+
+		JSONArray citiesArr = new JSONArray();
+		int cityId = 0;
+		for (int centerIndex : cityIndices)
+		{
+			Center center = graph.centers.get(centerIndex);
 			JSONObject cObj = new JSONObject();
 			cObj.put("id", cityId);
 			cObj.put("centerIndex", center.index);
@@ -280,11 +363,13 @@ public class GameExporter
 	 * Matches city text labels to the nearest center that is a city,
 	 * then generates fantasy names for any unmatched cities via NameCreator.
 	 */
-	private Map<Integer, String> collectCityNames()
+	private Map<Integer, String> collectCityNames(Set<Integer> cityIndices)
 	{
 		Map<Integer, String> result = new HashMap<>();
 
-		List<Center> cityCenters = graph.centers.stream().filter(c -> c.isCity).collect(Collectors.toList());
+		List<Center> cityCenters = cityIndices.stream()
+				.map(idx -> graph.centers.get(idx))
+				.collect(Collectors.toList());
 		if (cityCenters.isEmpty())
 		{
 			return result;

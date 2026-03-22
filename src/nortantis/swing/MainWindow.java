@@ -102,9 +102,17 @@ public class MainWindow extends JFrame implements ILoggerTarget
 	private JMenu highlightIconsInArtPackMenu;
 	private List<JCheckBoxMenuItem> artPacksToHighlight;
 
+	private String gameExportDir;
+
 	public MainWindow(String fileToOpen) throws Exception
 	{
+		this(fileToOpen, null);
+	}
+
+	public MainWindow(String fileToOpen, String gameExportDir) throws Exception
+	{
 		super(frameTitleBase);
+		this.gameExportDir = gameExportDir;
 
 		Logger.setLoggerTarget(this);
 
@@ -780,6 +788,13 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		JMenuItem exportForGameMenuItem = new JMenuItem("Export for Game...");
 		fileMenu.add(exportForGameMenuItem);
 		exportForGameMenuItem.addActionListener(e -> handleExportForGamePressed());
+
+		if (gameExportDir != null)
+		{
+			JMenuItem exportAndPlayMenuItem = new JMenuItem("Export for Game & Play");
+			fileMenu.add(exportAndPlayMenuItem);
+			exportAndPlayMenuItem.addActionListener(e -> handleExportAndPlayPressed());
+		}
 
 		refreshMenuItem = new JMenuItem(Translation.get("menu.file.refreshImagesAndRedraw"));
 		refreshMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, KeyEvent.CTRL_DOWN_MASK));
@@ -1800,6 +1815,54 @@ public class MainWindow extends JFrame implements ILoggerTarget
 		});
 	}
 
+	private void handleExportAndPlayPressed()
+	{
+		updater.doWhenMapIsReadyForInteractions(() ->
+		{
+			if (updater.mapParts == null || updater.mapParts.graph == null)
+			{
+				JOptionPane.showMessageDialog(this, "Please generate a map first.", "Export for Game & Play", JOptionPane.WARNING_MESSAGE);
+				return;
+			}
+
+			SwingWorker<Boolean, Void> worker = new SwingWorker<>()
+			{
+				@Override
+				protected Boolean doInBackground()
+				{
+					try
+					{
+						MapSettings currentSettings = getSettingsFromGUI(true);
+						GameExporter exporter = new GameExporter(updater.mapParts.graph, currentSettings);
+						exporter.exportAll(gameExportDir, mapEditingPanel.mapFromMapCreator);
+						return true;
+					}
+					catch (Exception ex)
+					{
+						SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(MainWindow.this,
+								"Export failed: " + ex.getMessage(), "Export for Game & Play", JOptionPane.ERROR_MESSAGE));
+						return false;
+					}
+				}
+
+				@Override
+				protected void done()
+				{
+					try
+					{
+						if (get())
+						{
+							dispose();
+							System.exit(0);
+						}
+					}
+					catch (Exception ignored) {}
+				}
+			};
+			worker.execute();
+		});
+	}
+
 	private void handleCustomImagesPressed()
 	{
 		CustomImagesDialog dialog = new CustomImagesDialog(this, customImagesPath, (value) ->
@@ -2223,16 +2286,34 @@ public class MainWindow extends JFrame implements ILoggerTarget
 
 		Translation.initialize();
 
+		if (hasFlag(args, "--headless"))
+		{
+			runHeadless(args);
+			return;
+		}
+
 		setLookAndFeel(UserPreferences.getInstance().lookAndFeel);
 
-		String fileToOpen = args.length > 0 ? args[0] : "";
+		String gameExportDir = getFlagValue(args, "--game-export-dir");
+		String fileToOpen = "";
+		for (String arg : args)
+		{
+			if (!arg.startsWith("--") && !arg.equals(gameExportDir))
+			{
+				fileToOpen = arg;
+				break;
+			}
+		}
+		final String finalFileToOpen = fileToOpen;
+		final String finalGameExportDir = gameExportDir;
+
 		EventQueue.invokeLater(new Runnable()
 		{
 			public void run()
 			{
 				try
 				{
-					MainWindow mainWindow = new MainWindow(fileToOpen);
+					MainWindow mainWindow = new MainWindow(finalFileToOpen, finalGameExportDir);
 					mainWindow.setVisible(true);
 				}
 				catch (Exception e)
@@ -2242,5 +2323,79 @@ public class MainWindow extends JFrame implements ILoggerTarget
 				}
 			}
 		});
+	}
+
+	private static void runHeadless(String[] args)
+	{
+		String exportFolder = getFlagValue(args, "--export");
+		String loadFile = getFlagValue(args, "--load");
+		String seedStr = getFlagValue(args, "--seed");
+
+		if (exportFolder == null)
+		{
+			System.err.println("Usage: --headless --export <folder> [--load <file.nort>] [--seed <number>]");
+			System.exit(1);
+		}
+
+		try
+		{
+			System.out.println("Generating map...");
+
+			nortantis.MapSettings settings;
+			if (loadFile != null)
+			{
+				settings = new nortantis.MapSettings(loadFile);
+			}
+			else
+			{
+				settings = nortantis.SettingsGenerator.generate("");
+			}
+
+			if (seedStr != null)
+			{
+				settings.randomSeed = Long.parseLong(seedStr);
+			}
+
+			nortantis.editor.MapParts mapParts = new nortantis.editor.MapParts();
+			nortantis.MapCreator creator = new nortantis.MapCreator();
+			nortantis.platform.Image mapImage = creator.createMap(settings, null, mapParts);
+
+			System.out.println("Exporting to " + exportFolder + "...");
+			GameExporter exporter = new GameExporter(mapParts.graph, settings);
+			exporter.exportAll(exportFolder, mapImage);
+
+			System.out.println("Done.");
+			System.exit(0);
+		}
+		catch (Exception e)
+		{
+			System.err.println("Error: " + e.getMessage());
+			e.printStackTrace();
+			System.exit(1);
+		}
+	}
+
+	private static boolean hasFlag(String[] args, String flag)
+	{
+		for (String arg : args)
+		{
+			if (arg.equals(flag))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String getFlagValue(String[] args, String flag)
+	{
+		for (int i = 0; i < args.length - 1; i++)
+		{
+			if (args[i].equals(flag))
+			{
+				return args[i + 1];
+			}
+		}
+		return null;
 	}
 }
