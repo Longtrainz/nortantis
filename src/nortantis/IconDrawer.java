@@ -1012,9 +1012,10 @@ public class IconDrawer
 
 		IntDimension mapOrSnippetSize = mapOrSnippet.size();
 
-		// Use different code paths for AWT vs Skia because transparent land doesn't work yet with Skia. (And there may also be performance
-		// disadvantages to having AWT go through the Skia code path, but I haven't checked that yet).
-		if (PlatformFactory.getInstance() instanceof AwtFactory)
+		// Use direct pixel access when the platform supports it (AWT, LibGDX).
+		// The snippet path is only needed for GPU-backed platforms (Skia) where
+		// full-map pixel reads are expensive.
+		if (PlatformFactory.getInstance().supportsDirectPixelAccess())
 		{
 			drawIconWithBackgroundAndMasksDirect(mapOrSnippet, imageAndMasks, landBackground, landTexture, oceanTexture, type, xLeft, yTop, graphXLeft, graphYTop, mapOrSnippetSize, icon, contentMask,
 					shadingMask, hoistedLandTexturePixels, hoistedOceanTexturePixels, hoistedLandBackgroundPixels);

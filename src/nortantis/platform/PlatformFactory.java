@@ -106,4 +106,14 @@ public abstract class PlatformFactory
 	public abstract <T> void doInBackgroundThread(BackgroundTask<T> task);
 
 	public abstract void doInMainUIThreadAsynchronous(Runnable toRun);
+
+	/**
+	 * Returns true if this platform supports efficient direct CPU pixel access
+	 * (via PixelReader/Writer) on the full map image, avoiding the need for
+	 * GPU-to-CPU snippet copies.
+	 */
+	public boolean supportsDirectPixelAccess()
+	{
+		return false;
+	}
 }

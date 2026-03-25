@@ -25,6 +25,11 @@ import java.util.Iterator;
 
 public class AwtFactory extends PlatformFactory
 {
+	@Override
+	public boolean supportsDirectPixelAccess()
+	{
+		return true;
+	}
 
 	@Override
 	protected nortantis.platform.ImageHelper createImageHelper()
