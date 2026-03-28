@@ -171,6 +171,7 @@ public class MapSettings implements Serializable
 	 */
 	public transient List<IconSource> cityIconSources;
 	public transient List<IconSource> mountainIconSources;
+	public transient List<IconSource> hillIconSources;
 	public double treeHeightScale;
 	// Default scale values below are for old maps from properties files. For current defaults, see SettingsGenerator.
 	public double mountainScale = 1.0;
