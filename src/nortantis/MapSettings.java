@@ -169,7 +169,8 @@ public class MapSettings implements Serializable
 	 * allowing cities to be drawn from multiple art packs and icon groups.
 	 * Not serialized — only used at runtime by the game's extended generation options.
 	 */
-	public transient List<CityIconSource> cityIconSources;
+	public transient List<IconSource> cityIconSources;
+	public transient List<IconSource> mountainIconSources;
 	public double treeHeightScale;
 	// Default scale values below are for old maps from properties files. For current defaults, see SettingsGenerator.
 	public double mountainScale = 1.0;

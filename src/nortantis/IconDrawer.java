@@ -58,7 +58,8 @@ public class IconDrawer
 	private double decorationScale;
 	private String customImagesPath;
 	private String artPackForNewMap;
-	private List<CityIconSource> cityIconSourcesForNewMaps;
+	private List<IconSource> cityIconSourcesForNewMaps;
+	private List<IconSource> mountainIconSourcesForNewMaps;
 	public static final Biome sandDunesBiome = Biome.TEMPERATE_DESERT;
 	private Map<IconType, Color> fillColorsByType;
 	private Map<IconType, HSBColor> iconFilterColorsByType;
@@ -80,6 +81,7 @@ public class IconDrawer
 		this.customImagesPath = settings.customImagesPath;
 		this.artPackForNewMap = settings.artPack;
 		this.cityIconSourcesForNewMaps = settings.cityIconSources;
+		this.mountainIconSourcesForNewMaps = settings.mountainIconSources;
 		this.resolutionScale = settings.resolution;
 
 		if (!settings.edits.isInitialized())
@@ -1391,7 +1393,7 @@ public class IconDrawer
 	 */
 	public List<IconDrawTask> addOrUnmarkCities()
 	{
-		if (cityIconSourcesForNewMaps != null && !cityIconSourcesForNewMaps.isEmpty())
+		if (cityIconSourcesForNewMaps != null)
 		{
 			return addOrUnmarkCitiesMultiSource();
 		}
@@ -1462,7 +1464,7 @@ public class IconDrawer
 		// Build a list of valid sources, each with their pre-loaded icon names
 		record ValidSource(String artPack, String groupId, List<String> iconNames) {}
 		List<ValidSource> validSources = new ArrayList<>();
-		for (CityIconSource source : cityIconSourcesForNewMaps)
+		for (IconSource source : cityIconSourcesForNewMaps)
 		{
 			Map<String, ImageAndMasks> icons = ImageCache.getInstance(source.artPack, customImagesPath)
 					.getIconsByNameForGroup(IconType.cities, source.groupId);
@@ -1511,6 +1513,12 @@ public class IconDrawer
 	 */
 	public void addOrUnmarkMountainsAndHills(List<Set<Center>> mountainAndHillGroups)
 	{
+		if (mountainIconSourcesForNewMaps != null)
+		{
+			addOrUnmarkMountainsAndHillsMultiSource(mountainAndHillGroups);
+			return;
+		}
+
 		String artPackForMountains;
 		if (ImageCache.getInstance(artPackForNewMap, customImagesPath).getIconGroupsAsListsForType(IconType.mountains).isEmpty())
 		{
@@ -1522,8 +1530,6 @@ public class IconDrawer
 			artPackForMountains = artPackForNewMap;
 		}
 
-		// Maps mountain range ids (the ids in the file names) to list of
-		// mountain images and their masks.
 		ListMap<String, ImageAndMasks> mountainImagesById = ImageCache.getInstance(artPackForMountains, customImagesPath).getIconGroupsAsListsForType(IconType.mountains);
 
 		if (mountainImagesById.isEmpty())
@@ -1542,10 +1548,6 @@ public class IconDrawer
 			artPackForHills = artPackForNewMap;
 		}
 
-		// Maps mountain range ids (the ids in the file names) to list of hill
-		// images and their masks.
-		// The hill image file names must use the same ids as the mountain
-		// ranges.
 		ListMap<String, ImageAndMasks> hillImagesById = ImageCache.getInstance(artPackForHills, customImagesPath).getIconGroupsAsListsForType(IconType.hills);
 
 		if (hillImagesById.isEmpty() && !mountainImagesById.isEmpty())
@@ -1553,7 +1555,6 @@ public class IconDrawer
 			Logger.println("No hills will be added because there are no hill images.");
 		}
 
-		// Warn if images are missing
 		for (String hillGroupId : hillImagesById.keySet())
 		{
 			if (!mountainImagesById.containsKey(hillGroupId))
@@ -1569,8 +1570,6 @@ public class IconDrawer
 			}
 		}
 
-		// Maps from the mountainRangeId of Centers to the range id's from the
-		// mountain image file names.
 		Map<Integer, String> rangeMap = new TreeMap<>();
 
 		for (Set<Center> group : mountainAndHillGroups)
@@ -1592,11 +1591,6 @@ public class IconDrawer
 					}
 					else
 					{
-						// I'm deliberately putting this line before checking
-						// center size so that the
-						// random number generator is used the same no matter
-						// what resolution the map
-						// is drawn at.
 						int i = Helper.safeAbs(rand.nextInt());
 
 						double scale = getWidthScaleForNewShuffledIcon(c, IconType.mountains);
@@ -1629,11 +1623,6 @@ public class IconDrawer
 
 						if (imagesInGroup != null && !imagesInGroup.isEmpty())
 						{
-							// I'm deliberately putting this line before
-							// checking center size so that the
-							// random number generator is used the same no
-							// matter what resolution the map
-							// is drawn at.
 							int i = Helper.safeAbs(rand.nextInt());
 
 							double scale = getWidthScaleForNewShuffledIcon(c, IconType.hills);
@@ -1650,6 +1639,91 @@ public class IconDrawer
 							{
 								c.isHill = false;
 							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private void addOrUnmarkMountainsAndHillsMultiSource(List<Set<Center>> mountainAndHillGroups)
+	{
+		// Build valid sources: each source provides mountain images and matching hill images from the same art pack
+		record RangeSource(String artPack, String groupId, ListMap<String, ImageAndMasks> mountainImages, ListMap<String, ImageAndMasks> hillImages) {}
+		List<RangeSource> validSources = new ArrayList<>();
+		for (IconSource source : mountainIconSourcesForNewMaps)
+		{
+			ListMap<String, ImageAndMasks> mtns = ImageCache.getInstance(source.artPack, customImagesPath).getIconGroupsAsListsForType(IconType.mountains);
+			if (mtns.containsKey(source.groupId) && !mtns.get(source.groupId).isEmpty())
+			{
+				ListMap<String, ImageAndMasks> hills = ImageCache.getInstance(source.artPack, customImagesPath).getIconGroupsAsListsForType(IconType.hills);
+				validSources.add(new RangeSource(source.artPack, source.groupId, mtns, hills));
+			}
+		}
+
+		if (validSources.isEmpty())
+		{
+			Logger.println("None of the selected mountain icon sources have valid icons. No mountains will be drawn.");
+			return;
+		}
+
+		// Each mountain range gets a random source
+		Map<Integer, RangeSource> rangeSourceMap = new TreeMap<>();
+
+		for (Set<Center> group : mountainAndHillGroups)
+		{
+			for (Center c : group)
+			{
+				RangeSource source = rangeSourceMap.get(c.mountainRangeId);
+				if (source == null)
+				{
+					source = validSources.get(rand.nextInt(validSources.size()));
+					rangeSourceMap.put(c.mountainRangeId, source);
+				}
+
+				if (c.isMountain)
+				{
+					int i = Helper.safeAbs(rand.nextInt());
+					double scale = getWidthScaleForNewShuffledIcon(c, IconType.mountains);
+					Point loc = getAnchoredMountainDrawPoint(c, source.groupId, i, mountainScale, source.mountainImages);
+
+					FreeIcon icon = new FreeIcon(resolutionScale, loc, scale, IconType.mountains, source.artPack, source.groupId, i, c.index,
+							fillColorsByType.get(IconType.mountains), iconFilterColorsByType.get(IconType.mountains),
+							maximizeOpacityByType.get(IconType.mountains), fillWithColorByType.get(IconType.mountains));
+
+					IconDrawTask task = toIconDrawTask(icon);
+					if (!isContentBottomTouchingWater(task))
+					{
+						freeIcons.addOrReplace(icon);
+					}
+					else
+					{
+						c.isMountain = false;
+					}
+				}
+				else if (c.isHill)
+				{
+					List<ImageAndMasks> hillsInGroup = source.hillImages.get(source.groupId);
+					if (hillsInGroup == null || hillsInGroup.isEmpty())
+					{
+						c.isHill = false;
+					}
+					else
+					{
+						int i = Helper.safeAbs(rand.nextInt());
+						double scale = getWidthScaleForNewShuffledIcon(c, IconType.hills);
+						FreeIcon icon = new FreeIcon(resolutionScale, c.loc, scale, IconType.hills, source.artPack, source.groupId, i, c.index,
+								fillColorsByType.get(IconType.hills), iconFilterColorsByType.get(IconType.hills),
+								maximizeOpacityByType.get(IconType.hills), fillWithColorByType.get(IconType.hills));
+
+						IconDrawTask task = toIconDrawTask(icon);
+						if (!isContentBottomTouchingWater(task))
+						{
+							freeIcons.addOrReplace(icon);
+						}
+						else
+						{
+							c.isHill = false;
 						}
 					}
 				}
