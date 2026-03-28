@@ -164,6 +164,12 @@ public class MapSettings implements Serializable
 	 * When generating a new map, this is the art pack to use. When editing a map, this is the art pack displayed in the UI.
 	 */
 	public String artPack;
+	/**
+	 * When non-null and non-empty, overrides artPack + cityIconTypeName for city generation,
+	 * allowing cities to be drawn from multiple art packs and icon groups.
+	 * Not serialized — only used at runtime by the game's extended generation options.
+	 */
+	public transient List<CityIconSource> cityIconSources;
 	public double treeHeightScale;
 	// Default scale values below are for old maps from properties files. For current defaults, see SettingsGenerator.
 	public double mountainScale = 1.0;

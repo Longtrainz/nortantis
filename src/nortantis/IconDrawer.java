@@ -58,6 +58,7 @@ public class IconDrawer
 	private double decorationScale;
 	private String customImagesPath;
 	private String artPackForNewMap;
+	private List<CityIconSource> cityIconSourcesForNewMaps;
 	public static final Biome sandDunesBiome = Biome.TEMPERATE_DESERT;
 	private Map<IconType, Color> fillColorsByType;
 	private Map<IconType, HSBColor> iconFilterColorsByType;
@@ -78,6 +79,7 @@ public class IconDrawer
 		this.cityIconTypeForNewMaps = settings.cityIconTypeName;
 		this.customImagesPath = settings.customImagesPath;
 		this.artPackForNewMap = settings.artPack;
+		this.cityIconSourcesForNewMaps = settings.cityIconSources;
 		this.resolutionScale = settings.resolution;
 
 		if (!settings.edits.isInitialized())
@@ -1389,6 +1391,11 @@ public class IconDrawer
 	 */
 	public List<IconDrawTask> addOrUnmarkCities()
 	{
+		if (cityIconSourcesForNewMaps != null && !cityIconSourcesForNewMaps.isEmpty())
+		{
+			return addOrUnmarkCitiesMultiSource();
+		}
+
 		String artPackForCities;
 		String cityTypeToUse;
 		if (StringUtils.isEmpty(cityIconTypeForNewMaps) || ImageCache.getInstance(artPackForNewMap, customImagesPath).getIconsByNameForGroup(IconType.cities, cityIconTypeForNewMaps).isEmpty())
@@ -1434,6 +1441,53 @@ public class IconDrawer
 				String cityName = cityNames.get(rand.nextInt(cityNames.size()));
 				FreeIcon icon = new FreeIcon(resolutionScale, c.loc, 1.0, IconType.cities, artPackForCities, cityTypeToUse, cityName, c.index, fillColorsByType.get(IconType.cities),
 						iconFilterColorsByType.get(IconType.cities), maximizeOpacityByType.get(IconType.cities), fillWithColorByType.get(IconType.cities));
+				IconDrawTask task = toIconDrawTask(icon);
+				if (!isContentBottomTouchingWater(icon) && !isNeighborACity(c))
+				{
+					freeIcons.addOrReplace(icon);
+					cities.add(task);
+				}
+				else
+				{
+					c.isCity = false;
+				}
+			}
+		}
+
+		return cities;
+	}
+
+	private List<IconDrawTask> addOrUnmarkCitiesMultiSource()
+	{
+		// Build a list of valid sources, each with their pre-loaded icon names
+		record ValidSource(String artPack, String groupId, List<String> iconNames) {}
+		List<ValidSource> validSources = new ArrayList<>();
+		for (CityIconSource source : cityIconSourcesForNewMaps)
+		{
+			Map<String, ImageAndMasks> icons = ImageCache.getInstance(source.artPack, customImagesPath)
+					.getIconsByNameForGroup(IconType.cities, source.groupId);
+			if (!icons.isEmpty())
+			{
+				validSources.add(new ValidSource(source.artPack, source.groupId, new ArrayList<>(icons.keySet())));
+			}
+		}
+
+		if (validSources.isEmpty())
+		{
+			Logger.println("None of the selected city icon sources have valid icons. No cities will be drawn.");
+			return new ArrayList<>(0);
+		}
+
+		List<IconDrawTask> cities = new ArrayList<>();
+		for (Center c : graph.centers)
+		{
+			if (c.isCity)
+			{
+				ValidSource source = validSources.get(rand.nextInt(validSources.size()));
+				String cityName = source.iconNames.get(rand.nextInt(source.iconNames.size()));
+				FreeIcon icon = new FreeIcon(resolutionScale, c.loc, 1.0, IconType.cities, source.artPack, source.groupId, cityName, c.index,
+						fillColorsByType.get(IconType.cities), iconFilterColorsByType.get(IconType.cities),
+						maximizeOpacityByType.get(IconType.cities), fillWithColorByType.get(IconType.cities));
 				IconDrawTask task = toIconDrawTask(icon);
 				if (!isContentBottomTouchingWater(icon) && !isNeighborACity(c))
 				{
