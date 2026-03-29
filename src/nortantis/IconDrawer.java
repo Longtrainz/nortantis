@@ -62,6 +62,7 @@ public class IconDrawer
 	private List<IconSource> mountainIconSourcesForNewMaps;
 	private List<IconSource> hillIconSourcesForNewMaps;
 	private List<IconSource> duneIconSourcesForNewMaps;
+	private List<IconSource> treeIconSourcesForNewMaps;
 	public static final Biome sandDunesBiome = Biome.TEMPERATE_DESERT;
 	private Map<IconType, Color> fillColorsByType;
 	private Map<IconType, HSBColor> iconFilterColorsByType;
@@ -86,6 +87,7 @@ public class IconDrawer
 		this.mountainIconSourcesForNewMaps = settings.mountainIconSources;
 		this.hillIconSourcesForNewMaps = settings.hillIconSources;
 		this.duneIconSourcesForNewMaps = settings.duneIconSources;
+		this.treeIconSourcesForNewMaps = settings.treeIconSources;
 		this.resolutionScale = settings.resolution;
 
 		if (!settings.edits.isInitialized())
@@ -1893,6 +1895,12 @@ public class IconDrawer
 
 	public void addTrees()
 	{
+		if (treeIconSourcesForNewMaps != null)
+		{
+			addTreesMultiSource();
+			return;
+		}
+
 		String artPackForTrees;
 		if (ImageCache.getInstance(artPackForNewMap, customImagesPath).getIconGroupsAsListsForType(IconType.trees).isEmpty())
 		{
@@ -1946,6 +1954,71 @@ public class IconDrawer
 					}
 				}
 
+			}
+		}
+
+		convertTreesToFreeIcons(treesByCenter, new LoggerWarningLogger());
+	}
+
+	private void addTreesMultiSource()
+	{
+		record TreeSource(String artPack, String groupId) {}
+		List<TreeSource> validSources = new ArrayList<>();
+		for (IconSource source : treeIconSourcesForNewMaps)
+		{
+			ListMap<String, ImageAndMasks> treeGroups = ImageCache.getInstance(source.artPack, customImagesPath).getIconGroupsAsListsForType(IconType.trees);
+			List<ImageAndMasks> images = treeGroups.get(source.groupId);
+			if (images != null && !images.isEmpty())
+			{
+				validSources.add(new TreeSource(source.artPack, source.groupId));
+			}
+		}
+
+		if (validSources.isEmpty())
+		{
+			Logger.println("None of the selected tree icon sources have valid icons. No trees will be drawn.");
+			return;
+		}
+
+		Map<Integer, CenterTrees> treesByCenter = new HashMap<>();
+
+		for (final ForestType forest : forestTypes)
+		{
+			if (forest.biomeFrequency != 1.0)
+			{
+				List<Set<Center>> groups = findCenterGroups(graph, maxGapBetweenBiomeGroups, center -> center.biome.equals(forest.biome));
+				for (Set<Center> group : groups)
+				{
+					if (rand.nextDouble() < forest.biomeFrequency)
+					{
+						TreeSource source = validSources.get(rand.nextInt(validSources.size()));
+						for (Center c : group)
+						{
+							if (canGenerateTreesOnCenter(c))
+							{
+								treesByCenter.put(c.index, new CenterTrees(source.artPack, source.groupId, forest.density, c.treeSeed));
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for (Center c : graph.centers)
+		{
+			for (ForestType forest : forestTypes)
+			{
+				if (forest.biomeFrequency == 1.0)
+				{
+					if (forest.biome.equals(c.biome))
+					{
+						if (canGenerateTreesOnCenter(c))
+						{
+							TreeSource source = validSources.get(rand.nextInt(validSources.size()));
+							treesByCenter.put(c.index, new CenterTrees(source.artPack, source.groupId, forest.density, c.treeSeed));
+						}
+					}
+				}
 			}
 		}
 
