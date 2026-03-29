@@ -61,6 +61,7 @@ public class IconDrawer
 	private List<IconSource> cityIconSourcesForNewMaps;
 	private List<IconSource> mountainIconSourcesForNewMaps;
 	private List<IconSource> hillIconSourcesForNewMaps;
+	private List<IconSource> duneIconSourcesForNewMaps;
 	public static final Biome sandDunesBiome = Biome.TEMPERATE_DESERT;
 	private Map<IconType, Color> fillColorsByType;
 	private Map<IconType, HSBColor> iconFilterColorsByType;
@@ -84,6 +85,7 @@ public class IconDrawer
 		this.cityIconSourcesForNewMaps = settings.cityIconSources;
 		this.mountainIconSourcesForNewMaps = settings.mountainIconSources;
 		this.hillIconSourcesForNewMaps = settings.hillIconSources;
+		this.duneIconSourcesForNewMaps = settings.duneIconSources;
 		this.resolutionScale = settings.resolution;
 
 		if (!settings.edits.isInitialized())
@@ -1779,6 +1781,12 @@ public class IconDrawer
 
 	public void addSandDunes()
 	{
+		if (duneIconSourcesForNewMaps != null)
+		{
+			addSandDunesMultiSource();
+			return;
+		}
+
 		String artPackForDunes;
 		if (ImageCache.getInstance(artPackForNewMap, customImagesPath).getIconGroupsAsListsForType(IconType.sand).isEmpty())
 		{
@@ -1825,6 +1833,54 @@ public class IconDrawer
 						int i = Helper.safeAbs(rand.nextInt());
 						FreeIcon icon = new FreeIcon(resolutionScale, c.loc, 1.0, IconType.sand, artPackForDunes, groupId, i, c.index, fillColorsByType.get(IconType.sand),
 								iconFilterColorsByType.get(IconType.sand), maximizeOpacityByType.get(IconType.sand), fillWithColorByType.get(IconType.sand));
+						if (!isContentBottomTouchingWater(icon))
+						{
+							freeIcons.addOrReplace(icon);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private void addSandDunesMultiSource()
+	{
+		record DuneSource(String artPack, String groupId) {}
+		List<DuneSource> validSources = new ArrayList<>();
+		for (IconSource source : duneIconSourcesForNewMaps)
+		{
+			ListMap<String, ImageAndMasks> sandGroups = ImageCache.getInstance(source.artPack, customImagesPath).getIconGroupsAsListsForType(IconType.sand);
+			List<ImageAndMasks> images = sandGroups.get(source.groupId);
+			if (images != null && !images.isEmpty())
+			{
+				validSources.add(new DuneSource(source.artPack, source.groupId));
+			}
+		}
+
+		if (validSources.isEmpty())
+		{
+			Logger.println("None of the selected dune icon sources have valid icons. No dunes will be drawn.");
+			return;
+		}
+
+		List<Set<Center>> groups = findCenterGroups(graph, maxGapBetweenBiomeGroups, center -> center.biome.equals(sandDunesBiome));
+
+		double duneProbabilityPerBiomeGroup = 0.6;
+		double duneProbabilityPerCenter = 0.5;
+
+		for (Set<Center> group : groups)
+		{
+			if (rand.nextDouble() < duneProbabilityPerBiomeGroup)
+			{
+				DuneSource source = validSources.get(rand.nextInt(validSources.size()));
+				for (Center c : group)
+				{
+					if (rand.nextDouble() < duneProbabilityPerCenter)
+					{
+						int i = Helper.safeAbs(rand.nextInt());
+						FreeIcon icon = new FreeIcon(resolutionScale, c.loc, 1.0, IconType.sand, source.artPack, source.groupId, i, c.index,
+								fillColorsByType.get(IconType.sand), iconFilterColorsByType.get(IconType.sand),
+								maximizeOpacityByType.get(IconType.sand), fillWithColorByType.get(IconType.sand));
 						if (!isContentBottomTouchingWater(icon))
 						{
 							freeIcons.addOrReplace(icon);
